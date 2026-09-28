@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="ja" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IT English Shadowing Coach</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        slate: {
+                            750: '#293548',
+                            850: '#151f32',
+                            950: '#0b1120',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- FontAwesome & Google Fonts -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a; /* slate-900 */
+            color: #f1f5f9; /* slate-100 */
+            -webkit-font-smoothing: antialiased;
+        }
+        
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7); /* slate-800 with opacity */
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* Recording pulse animation */
+        @keyframes pulse-ring {
+            0% { transform: scale(0.8); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { transform: scale(0.8); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .recording-pulse {
+            animation: pulse-ring 2s infinite;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e293b; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #475569; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #64748b; 
+        }
+
+        /* Loading Spinner */
+        .spinner {
+            border: 3px solid rgba(255,255,255,0.1);
+            border-radius: 50%;
+            border-top: 3px solid #34d399; /* emerald-400 */
+            width: 20px;
+            height: 20px;
+            -webkit-animation: spin 1s linear infinite; /* Safari */
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center p-4 sm:p-6 overflow-x-hidden">
+
+    <header class="w-full max-w-3xl flex justify-between items-center mb-8">
+        <div>
+            <h1 class="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-indigo-400">
+                <i class="fa-solid fa-microphone-lines mr-2"></i>IT Shadowing Coach
+            </h1>
+            <p class="text-slate-400 text-sm mt-1">IT Engineer & Business English</p>
+        </div>
+        <button id="btn-settings" class="p-2 rounded-full bg-slate-800 hover:bg-slate-700 transition-colors border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 relative">
+            <i class="fa-solid fa-gear text-slate-300"></i>
+            <!-- Status Indicator -->
+            <span id="api-status-indicator" class="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-slate-900"></span>
+        </button>
+    </header>
+
+    <main class="w-full max-w-3xl flex flex-col gap-6 pb-20">
+        
+        <!-- 1. Phrase Generation Area -->
+        <section class="glass-panel rounded-2xl p-5 sm:p-6 shadow-xl">
+            <h2 class="text-lg font-semibold mb-4 text-slate-200 border-b border-slate-700 pb-2">
+                <i class="fa-solid fa-layer-group text-indigo-400 mr-2"></i>1. Topic & Phrase
+            </h2>
+            
+            <div class="mb-4">
+                <label class="block text-sm text-slate-400 mb-2">Select Category:</label>
+                <div class="flex flex-wrap gap-2" id="category-container">
+                    <button class="cat-btn px-4 py-2 rounded-full text-sm font-medium bg-indigo-600 text-white border border-indigo-500 transition-all" data-cat="ITミーティング：進捗">IT Progress</button>
+                    <button class="cat-btn px-4 py-2 rounded-full text-sm font-medium bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 transition-all" data-cat="ITミーティング：障害・技術協議">Tech Issue</button>
+                    <button class="cat-btn px-4 py-2 rounded-full text-sm font-medium bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 transition-all" data-cat="海外出張：空港・ホテル">Travel (Hotel/Airport)</button>
+                    <button class="cat-btn px-4 py-2 rounded-full text-sm font-medium bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 transition-all" data-cat="自由入力テーマ">Custom Topic</button>
+                </div>
+                <div id="custom-topic-container" class="hidden mt-3">
+                    <input type="text" id="custom-topic-input" placeholder="e.g., Requesting a server restart" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                </div>
+            </div>
+
+            <button id="btn-generate" class="w-full py-3 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white rounded-xl font-semibold shadow-lg shadow-indigo-900/50 transition-all flex justify-center items-center gap-2">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> Generate New Phrase
+            </button>
+        </section>
+
+        <!-- 2. Display & Playback Area -->
+        <section class="glass-panel rounded-2xl p-5 sm:p-6 shadow-xl relative overflow-hidden">
+            <!-- Decorative gradient -->
+            <div class="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none"></div>
+
+            <h2 class="text-lg font-semibold mb-4 text-slate-200 border-b border-slate-700 pb-2">
+                <i class="fa-solid fa-book-open-reader text-emerald-400 mr-2"></i>2. Shadowing Practice
+            </h2>
+
+            <div id="phrase-display" class="mb-6">
+                <div class="bg-slate-800/50 rounded-lg p-4 border border-slate-700 mb-4">
+                    <p id="target-english" class="text-xl sm:text-2xl font-bold text-white leading-relaxed mb-2">
+                        I'll check it out and get back to you by tomorrow.
+                    </p>
+                    <p id="target-japanese" class="text-slate-400 text-sm sm:text-base">
+                        確認して、明日までにご返答します。
+                    </p>
+                </div>
+                
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2">
+                    <div class="bg-slate-800/50 p-3 rounded-lg border border-slate-700 flex items-center gap-3">
+                        <i class="fa-solid fa-gauge-high text-amber-400 text-lg"></i>
+                        <div>
+                            <p class="text-xs text-slate-400">Target Speed</p>
+                            <p id="target-wpm" class="text-sm font-semibold text-slate-200">130 WPM</p>
+                        </div>
+                    </div>
+                    <div class="bg-slate-800/50 p-3 rounded-lg border border-slate-700 flex items-start gap-3">
+                        <i class="fa-solid fa-link text-blue-400 text-lg mt-1"></i>
+                        <div>
+                            <p class="text-xs text-slate-400">Liaison & Drops</p>
+                            <p id="liaison-notes" class="text-sm font-medium text-slate-200">check‿it‿out (チェケラウト), get‿back (t脱落)</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Playback Controls -->
+            <div class="flex flex-wrap items-center justify-between gap-4 bg-slate-900/50 p-4 rounded-xl border border-slate-700">
+                <div class="flex items-center gap-3">
+                    <button id="btn-play-model" class="w-12 h-12 bg-emerald-500 hover:bg-emerald-400 text-slate-900 rounded-full flex items-center justify-center text-xl shadow-lg transition-transform hover:scale-105 focus:outline-none">
+                        <i class="fa-solid fa-play ml-1" id="icon-play-model"></i>
+                    </button>
+                    <button id="btn-stop-model" class="w-12 h-12 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-full flex items-center justify-center text-xl shadow-lg transition-transform hover:scale-105 focus:outline-none hidden">
+                        <i class="fa-solid fa-stop"></i>
+                    </button>
+                    
+                    <button id="btn-loop-3x" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 rounded-lg text-sm font-medium transition-colors flex items-center gap-2" title="Loop 3 times with interval">
+                        <i class="fa-solid fa-repeat"></i> x3
+                    </button>
+                </div>
+                
+                <div class="flex items-center gap-2 bg-slate-800 p-1 rounded-lg border border-slate-700">
+                    <button class="speed-btn px-3 py-1 rounded text-xs font-medium text-slate-400 hover:text-white transition-colors" data-speed="0.8">0.8x</button>
+                    <button class="speed-btn px-3 py-1 rounded text-xs font-medium bg-slate-600 text-white transition-colors" data-speed="1.0">1.0x</button>
+                    <button class="speed-btn px-3 py-1 rounded text-xs font-medium text-slate-400 hover:text-white transition-colors" data-speed="1.2">1.2x</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Record & Evaluate Area -->
+        <section class="glass-panel rounded-2xl p-5 sm:p-6 shadow-xl relative overflow-hidden">
+             <!-- Decorative gradient -->
+             <div class="absolute bottom-0 left-0 w-40 h-40 bg-indigo-500/10 rounded-full blur-3xl -ml-10 -mb-10 pointer-events-none"></div>
+
+            <h2 class="text-lg font-semibold mb-4 text-slate-200 border-b border-slate-700 pb-2">
+                <i class="fa-solid fa-microphone text-rose-400 mr-2"></i>3. Record & Compare
+            </h2>
+
+            <div class="flex flex-col sm:flex-row items-center gap-4 mb-6">
+                <button id="btn-record" class="w-full sm:w-auto px-6 py-4 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-bold shadow-lg shadow-rose-900/40 transition-all flex items-center justify-center gap-3">
+                    <i class="fa-solid fa-microphone text-xl"></i> 
+                    <span id="record-text">Start Recording</span>
+                </button>
+                
+                <div class="flex flex-1 w-full gap-2">
+                    <button id="btn-play-mine" class="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2" disabled>
+                        <i class="fa-solid fa-headphones"></i> My Voice
+                    </button>
+                    <button id="btn-compare" class="flex-1 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium shadow-lg shadow-blue-900/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2" disabled>
+                        <i class="fa-solid fa-code-compare"></i> Compare
+                    </button>
+                </div>
+            </div>
+
+            <!-- Audio element for playing recorded audio (hidden UI) -->
+            <audio id="recorded-audio" class="hidden"></audio>
+
+            <!-- Gemini Evaluation -->
+            <div class="pt-4 border-t border-slate-700">
+                <button id="btn-evaluate" class="w-full py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl font-bold shadow-lg transition-all flex justify-center items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                    <i class="fa-solid fa-robot"></i> AI Evaluate (Direct Audio)
+                </button>
+            </div>
+
+            <!-- Evaluation Result Card (Hidden by default) -->
+            <div id="eval-result-card" class="hidden mt-6 bg-slate-900 border border-slate-700 rounded-xl p-5">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-md font-bold text-purple-400"><i class="fa-solid fa-chart-line mr-2"></i>Evaluation Result</h3>
+                    <div class="bg-purple-900/50 text-purple-200 px-3 py-1 rounded-full text-sm font-bold border border-purple-500/30">
+                        Score: <span id="eval-score" class="text-xl text-white">--</span>/100
+                    </div>
+                </div>
+                
+                <div class="space-y-4">
+                    <div>
+                        <p class="text-xs text-slate-400 mb-1">What AI Heard (Transcript)</p>
+                        <p id="eval-transcript" class="text-sm text-slate-200 bg-slate-800 p-3 rounded-lg italic">...</p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-slate-400 mb-1">Liaison Achievement</p>
+                        <p id="eval-liaison" class="text-sm text-slate-200 bg-slate-800 p-3 rounded-lg">...</p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-emerald-400 mb-1"><i class="fa-solid fa-lightbulb mr-1"></i>Improvement Point</p>
+                        <p id="eval-improvement" class="text-sm text-slate-200 bg-emerald-900/20 border border-emerald-800/50 p-3 rounded-lg">...</p>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+    </main>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-800 border border-slate-600 rounded-2xl p-6 w-full max-w-md shadow-2xl relative">
+            <button id="btn-close-modal" class="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors">
+                <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+            
+            <h2 class="text-xl font-bold text-white mb-6 border-b border-slate-700 pb-2">
+                <i class="fa-solid fa-sliders text-indigo-400 mr-2"></i>Settings
+            </h2>
+            
+            <div class="space-y-5">
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-2">Gemini API Key</label>
+                    <input type="password" id="api-key-input" placeholder="AIzaSy..." class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                    <p class="text-xs text-slate-500 mt-1">Saved locally in your browser. Not sent anywhere else.</p>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-2">AI Model</label>
+                    <select id="model-select" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-indigo-500">
+                        <option value="gemini-3.8-flash">gemini-3.8-flash (Default)</option>
+                        <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+                    </select>
+                </div>
+                
+                <div class="pt-4 flex gap-3">
+                    <button id="btn-save-settings" class="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white py-2 rounded-lg font-medium transition-colors">
+                        Save
+                    </button>
+                    <button id="btn-clear-settings" class="px-4 bg-slate-700 hover:bg-rose-600 text-white py-2 rounded-lg font-medium transition-colors" title="Clear API Key">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="fixed bottom-5 right-5 transform translate-y-20 opacity-0 transition-all duration-300 bg-slate-800 border border-slate-600 text-white px-4 py-3 rounded-lg shadow-xl z-50 flex items-center gap-3">
+        <i id="toast-icon" class="fa-solid fa-circle-info text-blue-400"></i>
+        <span id="toast-message" class="text-sm font-medium">Message</span>
+    </div>
+
+    <script>
+        // --- State Management ---
+        const state = {
+            apiKey: localStorage.getItem('gemini_api_key') || '',
+            model: localStorage.getItem('gemini_model') || 'gemini-3.8-flash',
+            currentCategory: 'ITミーティング：進捗',
+            currentPhrase: {
+                english: "I'll check it out and get back to you by tomorrow.",
+                japanese: "確認して、明日までにご返答します。",
+                wpm: 130,
+                liaison_notes: "check‿it‿out (チェケラウト), get‿back (t脱落)"
+            },
+            playbackSpeed: 1.0,
+            isGenerating: false,
+            
+            // Audio/Recording
+            mediaRecorder: null,
+            audioChunks: [],
+            recordedBlob: null,
+            audioMimeType: '',
+            isRecording: false,
+            
+            // Speech Synthesis
+            synthUtterance: null, // Keep ref to prevent GC
+            isPlayingModel: false,
+            stopPlaybackRequested: false,
+            voices: []
+        };
+
+        // Fallback Database
+        const fallbackPhrases = [
+            {
+                english: "I'll check it out and get back to you by tomorrow.",
+                japanese: "確認して、明日までにご返答します。",
+                wpm: 130,
+                liaison_notes: "check‿it‿out (チェケラウト), get‿back (t脱落)"
+            },
+            {
+                english: "Could you clarify the specifications for this feature?",
+                japanese: "この機能の仕様について明確にしていただけますか？",
+                wpm: 140,
+                liaison_notes: "Could‿you (クヂュー)"
+            },
+            {
+                english: "We are currently experiencing a minor delay due to network issues.",
+                japanese: "ネットワークの問題により、現在わずかな遅延が発生しています。",
+                wpm: 135,
+                liaison_notes: "minor‿delay (rとdの連続), network‿issues (kとiの連結)"
+            },
+            {
+                english: "Can you hear me clearly? Let me share my screen.",
+                japanese: "はっきり聞こえますか？画面を共有します。",
+                wpm: 125,
+                liaison_notes: "hear‿me (ヒアミ), let‿me (レッミー)"
+            }
+        ];
+
+        // --- DOM Elements ---
+        const el = {
+            // Header & Settings
+            btnSettings: document.getElementById('btn-settings'),
+            apiStatusIndicator: document.getElementById('api-status-indicator'),
+            settingsModal: document.getElementById('settings-modal'),
+            btnCloseModal: document.getElementById('btn-close-modal'),
+            apiKeyInput: document.getElementById('api-key-input'),
+            modelSelect: document.getElementById('model-select'),
+            btnSaveSettings: document.getElementById('btn-save-settings'),
+            btnClearSettings: document.getElementById('btn-clear-settings'),
+            
+            // Generate Area
+            categoryBtns: document.querySelectorAll('.cat-btn'),
+            customTopicContainer: document.getElementById('custom-topic-container'),
+            customTopicInput: document.getElementById('custom-topic-input'),
+            btnGenerate: document.getElementById('btn-generate'),
+            
+            // Display Area
+            phraseDisplay: document.getElementById('phrase-display'),
+            targetEnglish: document.getElementById('target-english'),
+            targetJapanese: document.getElementById('target-japanese'),
+            targetWpm: document.getElementById('target-wpm'),
+            liaisonNotes: document.getElementById('liaison-notes'),
+            
+            // Playback Controls
+            btnPlayModel: document.getElementById('btn-play-model'),
+            btnStopModel: document.getElementById('btn-stop-model'),
+            iconPlayModel: document.getElementById('icon-play-model'),
+            btnLoop3x: document.getElementById('btn-loop-3x'),
+            speedBtns: document.querySelectorAll('.speed-btn'),
+            
+            // Recording Controls
+            btnRecord: document.getElementById('btn-record'),
+            recordText: document.getElementById('record-text'),
+            btnPlayMine: document.getElementById('btn-play-mine'),
+            btnCompare: document.getElementById('btn-compare'),
+            recordedAudio: document.getElementById('recorded-audio'),
+            
+            // Evaluation Area
+            btnEvaluate: document.getElementById('btn-evaluate'),
+            evalResultCard: document.getElementById('eval-result-card'),
+            evalScore: document.getElementById('eval-score'),
+            evalTranscript: document.getElementById('eval-transcript'),
+            evalLiaison: document.getElementById('eval-liaison'),
+            evalImprovement: document.getElementById('eval-improvement'),
+            
+            // Toast
+            toast: document.getElementById('toast'),
+            toastIcon: document.getElementById('toast-icon'),
+            toastMessage: document.getElementById('toast-message')
+        };
+
+        // --- Init ---
+        function init() {
+            updateApiStatusUI();
+            updatePhraseUI();
+            initSpeechSynthesis();
+            determineAudioMimeType();
+            bindEvents();
+        }
+
+        function updateApiStatusUI() {
+            if (state.apiKey) {
+                el.apiStatusIndicator.classList.remove('bg-red-500');
+                el.apiStatusIndicator.classList.add('bg-emerald-500');
+                el.apiKeyInput.value = state.apiKey;
+            } else {
+                el.apiStatusIndicator.classList.remove('bg-emerald-500');
+                el.apiStatusIndicator.classList.add('bg-red-500');
+                el.apiKeyInput.value = '';
+            }
+            el.modelSelect.value = state.model;
+        }
+
+        function showToast(message, type = 'info') {
+            el.toastMessage.textContent = message;
+            if (type === 'error') {
+                el.toastIcon.className = 'fa-solid fa-circle-exclamation text-rose-400';
+                el.toast.classList.replace('bg-slate-800', 'bg-rose-900/90');
+                el.toast.classList.replace('border-slate-600', 'border-rose-700');
+            } else if (type === 'success') {
+                el.toastIcon.className = 'fa-solid fa-circle-check text-emerald-400';
+                el.toast.classList.replace('bg-slate-800', 'bg-emerald-900/90');
+                el.toast.classList.replace('border-slate-600', 'border-emerald-700');
+            } else {
+                el.toastIcon.className = 'fa-solid fa-circle-info text-blue-400';
+                el.toast.className = 'fixed bottom-5 right-5 transform translate-y-20 opacity-0 transition-all duration-300 bg-slate-800 border border-slate-600 text-white px-4 py-3 rounded-lg shadow-xl z-50 flex items-center gap-3';
+            }
+            
+            el.toast.classList.remove('translate-y-20', 'opacity-0');
+            
+            setTimeout(() => {
+                el.toast.classList.add('translate-y-20', 'opacity-0');
+                // Reset styling after hide
+                setTimeout(() => {
+                     el.toast.className = 'fixed bottom-5 right-5 transform translate-y-20 opacity-0 transition-all duration-300 bg-slate-800 border border-slate-600 text-white px-4 py-3 rounded-lg shadow-xl z-50 flex items-center gap-3';
+                }, 300);
+            }, 3000);
+        }
+
+        function bindEvents() {
+            // Settings
+            el.btnSettings.addEventListener('click', () => el.settingsModal.classList.remove('hidden'));
+            el.btnCloseModal.addEventListener('click', () => el.settingsModal.classList.add('hidden'));
+            el.btnSaveSettings.addEventListener('click', saveSettings);
+            el.btnClearSettings.addEventListener('click', clearSettings);
+            
+            // Close modal on outside click
+            el.settingsModal.addEventListener('click', (e) => {
+                if (e.target === el.settingsModal) el.settingsModal.classList.add('hidden');
+            });
+
+            // Category Selection
+            el.categoryBtns.forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    el.categoryBtns.forEach(b => {
+                        b.classList.remove('bg-indigo-600', 'text-white', 'border-indigo-500');
+                        b.classList.add('bg-slate-800', 'text-slate-300', 'border-slate-700');
+                    });
+                    e.target.classList.remove('bg-slate-800', 'text-slate-300', 'border-slate-700');
+                    e.target.classList.add('bg-indigo-600', 'text-white', 'border-indigo-500');
+                    
+                    state.currentCategory = e.target.dataset.cat;
+                    
+                    if (state.currentCategory === '自由入力テーマ') {
+                        el.customTopicContainer.classList.remove('hidden');
+                    } else {
+                        el.customTopicContainer.classList.add('hidden');
+                    }
+                });
+            });
+
+            // Generate
+            el.btnGenerate.addEventListener('click', generatePhrase);
+
+            // Playback
+            el.btnPlayModel.addEventListener('click', () => playAudio(1));
+            el.btnLoop3x.addEventListener('click', () => playAudio(3));
+            el.btnStopModel.addEventListener('click', stopAudio);
+            
+            // Speed controls
+            el.speedBtns.forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    el.speedBtns.forEach(b => {
+                        b.classList.remove('bg-slate-600', 'text-white');
+                        b.classList.add('text-slate-400');
+                    });
+                    e.target.classList.remove('text-slate-400');
+                    e.target.classList.add('bg-slate-600', 'text-white');
+                    state.playbackSpeed = parseFloat(e.target.dataset.speed);
+                });
+            });
+
+            // Recording
+            el.btnRecord.addEventListener('click', toggleRecording);
+            el.btnPlayMine.addEventListener('click', playRecordedAudio);
+            el.btnCompare.addEventListener('click', compareAudio);
+            
+            // Evaluation
+            el.btnEvaluate.addEventListener('click', evaluateAudio);
+        }
+
+        // --- Settings Logic ---
+        function saveSettings() {
+            const key = el.apiKeyInput.value.trim();
+            const model = el.modelSelect.value;
+            
+            if (key) {
+                localStorage.setItem('gemini_api_key', key);
+                state.apiKey = key;
+            }
+            localStorage.setItem('gemini_model', model);
+            state.model = model;
+            
+            updateApiStatusUI();
+            el.settingsModal.classList.add('hidden');
+            showToast('Settings saved', 'success');
+        }
+
+        function clearSettings() {
+            localStorage.removeItem('gemini_api_key');
+            state.apiKey = '';
+            el.apiKeyInput.value = '';
+            updateApiStatusUI();
+            showToast('API Key cleared');
+        }
+
+        // --- Phrase Generation Logic ---
+        async function generatePhrase() {
+            if (!state.apiKey) {
+                // Fallback mode
+                const randomPhrase = fallbackPhrases[Math.floor(Math.random() * fallbackPhrases.length)];
+                state.currentPhrase = randomPhrase;
+                updatePhraseUI();
+                showToast('Using fallback data (API Key not set)');
+                resetRecordingState();
+                return;
+            }
+
+            let topic = state.currentCategory;
+            if (topic === '自由入力テーマ') {
+                const custom = el.customTopicInput.value.trim();
+                if (!custom) return showToast('Please enter a custom topic', 'error');
+                topic = custom;
+            }
+
+            setLoadingState(el.btnGenerate, true, 'Generating...');
+
+            const prompt = `
+あなたはITエンジニア向けの英語コーチです。
+トピック「${topic}」に関連する、実務や海外出張で実際に使われる自然な英会話フレーズを1〜2文で生成してください。
+ネイティブが発音する際に「リエゾン（音の連結）」や「リダクション（音の脱落）」が発生しやすい、実践的な表現を含めること。
+
+以下のJSONスキーマに従って厳密にJSONのみを出力してください。
+{
+  "type": "object",
+  "properties": {
+    "english": { "type": "string", "description": "実務的な英文(1-2文)" },
+    "japanese": { "type": "string", "description": "自然な日本語訳" },
+    "wpm": { "type": "integer", "description": "推奨する発話速度の目安(例:130)" },
+    "liaison_notes": { "type": "string", "description": "リエゾンや脱落の具体的な解説（例: check‿it‿out (チェケラウト)）" }
+  },
+  "required": ["english", "japanese", "wpm", "liaison_notes"]
+}`;
+
+            try {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${state.model}:generateContent?key=${state.apiKey}`;
+                
+                const payload = {
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        temperature: 0.7
+                    }
+                };
+                
+                // Add thinking budget 0 to reduce latency if model supports it (like new flashes, if not it might be ignored or error, we'll try standard config first, but requirement asks for it. We'll add it safely if possible, but standard flash doesn't need it for low latency. Let's add it to generationConfig as requested).
+                payload.generationConfig.thinkingConfig = { thinkingBudget: 0 };
+
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.error?.message || 'API request failed');
+                }
+
+                const data = await response.json();
+                const jsonText = data.candidates[0].content.parts[0].text;
+                
+                // Remove markdown code blocks if any
+                const cleanJson = jsonText.replace(/```json\n?|```/g, '').trim();
+                
+                state.currentPhrase = JSON.parse(cleanJson);
+                updatePhraseUI();
+                resetRecordingState();
+                showToast('New phrase generated!', 'success');
+
+            } catch (error) {
+                console.error("Generation Error:", error);
+                showToast('Generation failed: ' + error.message, 'error');
+                // Fallback on error
+                state.currentPhrase = fallbackPhrases[Math.floor(Math.random() * fallbackPhrases.length)];
+                updatePhraseUI();
+                resetRecordingState();
+            } finally {
+                setLoadingState(el.btnGenerate, false, '<i class="fa-solid fa-wand-magic-sparkles"></i> Generate New Phrase');
+            }
+        }
+
+        function updatePhraseUI() {
+            el.targetEnglish.textContent = state.currentPhrase.english;
+            el.targetJapanese.textContent = state.currentPhrase.japanese;
+            el.targetWpm.textContent = `${state.currentPhrase.wpm} WPM`;
+            el.liaisonNotes.textContent = state.currentPhrase.liaison_notes;
+            
+            // Reset evaluation UI
+            el.evalResultCard.classList.add('hidden');
+        }
+
+        function setLoadingState(button, isLoading, htmlContent) {
+            state.isGenerating = isLoading;
+            if (isLoading) {
+                button.disabled = true;
+                button.innerHTML = `<span class="spinner"></span> <span class="ml-2">${htmlContent}</span>`;
+                button.classList.add('opacity-75', 'cursor-not-allowed');
+            } else {
+                button.disabled = false;
+                button.innerHTML = htmlContent;
+                button.classList.remove('opacity-75', 'cursor-not-allowed');
+            }
+        }
+
+        // --- Speech Synthesis ---
+        function initSpeechSynthesis() {
+            // Pre-load voices
+            const loadVoices = () => {
+                state.voices = window.speechSynthesis.getVoices();
+            };
+            loadVoices();
+            if (window.speechSynthesis.onvoiceschanged !== undefined) {
+                window.speechSynthesis.onvoiceschanged = loadVoices;
+            }
+        }
+
+        async function playAudio(loopCount = 1) {
+            if (state.isPlayingModel) {
+                stopAudio();
+            }
+            
+            state.stopPlaybackRequested = false;
+            state.isPlayingModel = true;
+            togglePlaybackUI(true);
+
+            for (let i = 0; i < loopCount; i++) {
+                if (state.stopPlaybackRequested) break;
+                
+                await speak(state.currentPhrase.english, state.playbackSpeed);
+                
+                if (i < loopCount - 1 && !state.stopPlaybackRequested) {
+                    await sleep(1500); // 1.5s interval
+                }
+            }
+            
+            state.isPlayingModel = false;
+            togglePlaybackUI(false);
+        }
+
+        function stopAudio() {
+            window.speechSynthesis.cancel();
+            state.stopPlaybackRequested = true;
+            state.isPlayingModel = false;
+            togglePlaybackUI(false);
+        }
+
+        function togglePlaybackUI(isPlaying) {
+            if (isPlaying) {
+                el.btnPlayModel.classList.add('hidden');
+                el.btnStopModel.classList.remove('hidden');
+            } else {
+                el.btnPlayModel.classList.remove('hidden');
+                el.btnStopModel.classList.add('hidden');
+            }
+        }
+
+        function speak(text, rate) {
+            return new Promise((resolve) => {
+                const utterance = new SpeechSynthesisUtterance(text);
+                state.synthUtterance = utterance; // Keep ref
+                
+                utterance.lang = 'en-US';
+                utterance.rate = rate;
+                
+                // Try to find a good US voice
+                let usVoice = state.voices.find(v => v.lang === 'en-US' && v.name.includes('Google')) || 
+                              state.voices.find(v => v.lang === 'en-US' && v.name.includes('Samantha')) ||
+                              state.voices.find(v => v.lang === 'en-US');
+                
+                if (usVoice) utterance.voice = usVoice;
+
+                utterance.onend = () => resolve();
+                utterance.onerror = (e) => {
+                    console.warn("Speech synthesis error", e);
+                    resolve();
+                };
+                
+                window.speechSynthesis.speak(utterance);
+            });
+        }
+
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+        // --- Recording Logic ---
+        function determineAudioMimeType() {
+            const types = [
+                'audio/webm;codecs=opus',
+                'audio/webm',
+                'audio/mp4',
+                'audio/aac',
+                'audio/ogg'
+            ];
+            for (let type of types) {
+                if (MediaRecorder.isTypeSupported(type)) {
+                    state.audioMimeType = type;
+                    console.log("Using Audio MIME Type:", state.audioMimeType);
+                    return;
+                }
+            }
+            state.audioMimeType = ''; // Fallback, let browser decide
+        }
+
+        async function toggleRecording() {
+            if (state.isRecording) {
+                stopRecording();
+            } else {
+                startRecording();
+            }
+        }
+
+        async function startRecording() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                
+                const options = state.audioMimeType ? { mimeType: state.audioMimeType } : undefined;
+                state.mediaRecorder = new MediaRecorder(stream, options);
+                state.audioChunks = [];
+
+                state.mediaRecorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) state.audioChunks.push(e.data);
+                };
+
+                state.mediaRecorder.onstop = () => {
+                    const type = state.audioMimeType || 'audio/webm'; // default fallback for blob
+                    state.recordedBlob = new Blob(state.audioChunks, { type: type });
+                    const audioUrl = URL.createObjectURL(state.recordedBlob);
+                    el.recordedAudio.src = audioUrl;
+                    
+                    // Enable buttons
+                    el.btnPlayMine.disabled = false;
+                    el.btnCompare.disabled = false;
+                    el.btnEvaluate.disabled = false;
+                    
+                    // Stop tracks to release mic
+                    stream.getTracks().forEach(track => track.stop());
+                };
+
+                state.mediaRecorder.start();
+                state.isRecording = true;
+                
+                // UI Update
+                el.btnRecord.classList.replace('bg-rose-600', 'bg-transparent');
+                el.btnRecord.classList.add('border-2', 'border-rose-500', 'text-rose-400', 'recording-pulse');
+                el.recordText.textContent = "Stop Recording";
+                el.btnPlayMine.disabled = true;
+                el.btnCompare.disabled = true;
+                el.btnEvaluate.disabled = true;
+
+            } catch (err) {
+                console.error("Mic error:", err);
+                showToast("Microphone access denied or error: " + err.message, "error");
+            }
+        }
+
+        function stopRecording() {
+            if (state.mediaRecorder && state.mediaRecorder.state !== 'inactive') {
+                state.mediaRecorder.stop();
+                state.isRecording = false;
+                
+                // UI Update
+                el.btnRecord.classList.replace('bg-transparent', 'bg-rose-600');
+                el.btnRecord.classList.remove('border-2', 'border-rose-500', 'text-rose-400', 'recording-pulse');
+                el.recordText.textContent = "Start Recording";
+                el.btnRecord.classList.add('text-white');
+            }
+        }
+
+        function resetRecordingState() {
+            state.recordedBlob = null;
+            state.audioChunks = [];
+            el.btnPlayMine.disabled = true;
+            el.btnCompare.disabled = true;
+            el.btnEvaluate.disabled = true;
+        }
+
+        function playRecordedAudio() {
+            if (state.recordedBlob) {
+                el.recordedAudio.play();
+            }
+        }
+
+        async function compareAudio() {
+            if (!state.recordedBlob) return;
+            
+            // Play Model
+            await speak(state.currentPhrase.english, state.playbackSpeed);
+            
+            // Wait 1s
+            await sleep(1000);
+            
+            // Play Mine
+            playRecordedAudio();
+        }
+
+        // --- Audio Evaluation (Gemini Multimodal) ---
+        async function evaluateAudio() {
+            if (!state.apiKey) {
+                showToast("API Key is required for evaluation.", "error");
+                el.settingsModal.classList.remove('hidden');
+                return;
+            }
+            if (!state.recordedBlob) return;
+
+            setLoadingState(el.btnEvaluate, true, 'Analyzing Audio...');
+            el.evalResultCard.classList.add('hidden');
+
+            try {
+                // 1. Convert Blob to Base64
+                const base64Data = await blobToBase64(state.recordedBlob);
+                
+                // Clean base64 string (remove data URL prefix)
+                const base64Clean = base64Data.split(',')[1];
+                const mime = state.recordedBlob.type || 'audio/webm'; // Ensure mime type exists
+
+                const prompt = `
+あなたは厳格かつ励まし上手なIT英語発音コーチです。
+添付の音声は、学習者が以下の目標英文をシャドーイング・発音したものです。
+
+目標英文: "${state.currentPhrase.english}"
+注意すべきリエゾン: ${state.currentPhrase.liaison_notes}
+
+この音声データを直接聞き取り、発音の正確性、流暢さ、リエゾンの達成度を評価してください。
+以下のJSONスキーマに従って厳密にJSONのみを出力してください。
+
+{
+  "type": "object",
+  "properties": {
+    "score": { "type": "integer", "description": "発音の客観的スコア（0〜100）" },
+    "transcript": { "type": "string", "description": "AIが実際に聞き取ったユーザーの発話内容（英語で、聞き取れた通りに）" },
+    "liaison_achievement": { "type": "string", "description": "指定されたリエゾン・脱落ができていたかの評価（日本語）" },
+    "improvement_point": { "type": "string", "description": "発音を良くするための具体的なワンポイントアドバイス（日本語）" }
+  },
+  "required": ["score", "transcript", "liaison_achievement", "improvement_point"]
+}`;
+
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${state.model}:generateContent?key=${state.apiKey}`;
+                
+                const payload = {
+                    contents: [
+                        {
+                            role: "user",
+                            parts: [
+                                { text: prompt },
+                                {
+                                    inlineData: {
+                                        mimeType: mime,
+                                        data: base64Clean
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        temperature: 0.2 // Lower temp for more objective evaluation
+                    }
+                };
+
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.error?.message || 'API request failed');
+                }
+
+                const data = await response.json();
+                const jsonText = data.candidates[0].content.parts[0].text;
+                const cleanJson = jsonText.replace(/```json\n?|```/g, '').trim();
+                const result = JSON.parse(cleanJson);
+
+                // Update UI
+                el.evalScore.textContent = result.score;
+                el.evalTranscript.textContent = `"${result.transcript}"`;
+                el.evalLiaison.textContent = result.liaison_achievement;
+                el.evalImprovement.textContent = result.improvement_point;
+                
+                // Colorize score
+                el.evalScore.className = 'text-xl font-black ';
+                if(result.score >= 80) el.evalScore.classList.add('text-emerald-400');
+                else if(result.score >= 60) el.evalScore.classList.add('text-amber-400');
+                else el.evalScore.classList.add('text-rose-400');
+
+                el.evalResultCard.classList.remove('hidden');
+                
+                // Scroll to result
+                el.evalResultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+            } catch (error) {
+                console.error("Evaluation Error:", error);
+                showToast('Evaluation failed: ' + error.message, 'error');
+            } finally {
+                setLoadingState(el.btnEvaluate, false, '<i class="fa-solid fa-robot"></i> AI Evaluate (Direct Audio)');
+            }
+        }
+
+        // Helper: Blob to Base64
+        function blobToBase64(blob) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+        }
+
+        // Initialize application
+        window.addEventListener('DOMContentLoaded', init);
+
+    </script>
+</body>
+</html>
