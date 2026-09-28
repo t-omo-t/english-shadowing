@@ -34,19 +34,18 @@
     <style>
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #0f172a; /* slate-900 */
-            color: #f1f5f9; /* slate-100 */
+            background-color: #0f172a;
+            color: #f1f5f9;
             -webkit-font-smoothing: antialiased;
         }
         
         .glass-panel {
-            background: rgba(30, 41, 59, 0.7); /* slate-800 with opacity */
+            background: rgba(30, 41, 59, 0.7);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
-        /* Recording pulse animation */
         @keyframes pulse-ring {
             0% { transform: scale(0.8); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
             70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
@@ -56,30 +55,18 @@
             animation: pulse-ring 2s infinite;
         }
 
-        /* Custom Scrollbar */
-        ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #1e293b; 
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #475569; 
-            border-radius: 4px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #64748b; 
-        }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
 
-        /* Loading Spinner */
         .spinner {
             border: 3px solid rgba(255,255,255,0.1);
             border-radius: 50%;
-            border-top: 3px solid #34d399; /* emerald-400 */
+            border-top: 3px solid #34d399;
             width: 20px;
             height: 20px;
-            -webkit-animation: spin 1s linear infinite; /* Safari */
+            -webkit-animation: spin 1s linear infinite;
             animation: spin 1s linear infinite;
             display: inline-block;
             vertical-align: middle;
@@ -88,6 +75,9 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        
+        /* プレイヤーボタンのローディング状態 */
+        .play-spinner { border-top-color: #0f172a; width: 16px; height: 16px; border-width: 2px; }
     </style>
 </head>
 <body class="min-h-screen flex flex-col items-center p-4 sm:p-6 overflow-x-hidden">
@@ -101,7 +91,6 @@
         </div>
         <button id="btn-settings" class="p-2 rounded-full bg-slate-800 hover:bg-slate-700 transition-colors border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 relative">
             <i class="fa-solid fa-gear text-slate-300"></i>
-            <!-- Status Indicator -->
             <span id="api-status-indicator" class="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-slate-900"></span>
         </button>
     </header>
@@ -134,7 +123,6 @@
 
         <!-- 2. Display & Playback Area -->
         <section class="glass-panel rounded-2xl p-5 sm:p-6 shadow-xl relative overflow-hidden">
-            <!-- Decorative gradient -->
             <div class="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none"></div>
 
             <h2 class="text-lg font-semibold mb-4 text-slate-200 border-b border-slate-700 pb-2">
@@ -169,10 +157,19 @@
                 </div>
             </div>
 
+            <!-- Fallback Warning (Hidden by default) -->
+            <div id="fallback-warning" class="hidden mb-4 bg-amber-900/40 border border-amber-700/50 p-3 rounded-lg flex items-start gap-2">
+                <i class="fa-solid fa-triangle-exclamation text-amber-400 mt-0.5"></i>
+                <p class="text-xs text-amber-200">API未設定・通信エラーのため代替音声を使用しています。<br><span class="font-bold">※iPhone等の消音モード時（マナーモード）は音が鳴りません。スイッチを解除してご利用ください。</span></p>
+            </div>
+
             <!-- Playback Controls -->
             <div class="flex flex-wrap items-center justify-between gap-4 bg-slate-900/50 p-4 rounded-xl border border-slate-700">
-                <div class="flex items-center gap-3">
-                    <button id="btn-play-model" class="w-12 h-12 bg-emerald-500 hover:bg-emerald-400 text-slate-900 rounded-full flex items-center justify-center text-xl shadow-lg transition-transform hover:scale-105 focus:outline-none">
+                <div class="flex items-center gap-3 relative">
+                    <button id="btn-play-model" class="w-12 h-12 bg-emerald-500 hover:bg-emerald-400 text-slate-900 rounded-full flex items-center justify-center text-xl shadow-lg transition-transform hover:scale-105 focus:outline-none relative">
+                        <span id="play-spinner-container" class="hidden absolute inset-0 flex items-center justify-center">
+                            <span class="spinner play-spinner"></span>
+                        </span>
                         <i class="fa-solid fa-play ml-1" id="icon-play-model"></i>
                     </button>
                     <button id="btn-stop-model" class="w-12 h-12 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-full flex items-center justify-center text-xl shadow-lg transition-transform hover:scale-105 focus:outline-none hidden">
@@ -190,11 +187,13 @@
                     <button class="speed-btn px-3 py-1 rounded text-xs font-medium text-slate-400 hover:text-white transition-colors" data-speed="1.2">1.2x</button>
                 </div>
             </div>
+
+            <!-- Hidden audio element for Model TTS -->
+            <audio id="model-audio" class="hidden"></audio>
         </section>
 
         <!-- 3. Record & Evaluate Area -->
         <section class="glass-panel rounded-2xl p-5 sm:p-6 shadow-xl relative overflow-hidden">
-             <!-- Decorative gradient -->
              <div class="absolute bottom-0 left-0 w-40 h-40 bg-indigo-500/10 rounded-full blur-3xl -ml-10 -mb-10 pointer-events-none"></div>
 
             <h2 class="text-lg font-semibold mb-4 text-slate-200 border-b border-slate-700 pb-2">
@@ -217,7 +216,7 @@
                 </div>
             </div>
 
-            <!-- Audio element for playing recorded audio (hidden UI) -->
+            <!-- Audio element for playing recorded audio -->
             <audio id="recorded-audio" class="hidden"></audio>
 
             <!-- Gemini Evaluation -->
@@ -227,7 +226,7 @@
                 </button>
             </div>
 
-            <!-- Evaluation Result Card (Hidden by default) -->
+            <!-- Evaluation Result Card -->
             <div id="eval-result-card" class="hidden mt-6 bg-slate-900 border border-slate-700 rounded-xl p-5">
                 <div class="flex items-center justify-between mb-4">
                     <h3 class="text-md font-bold text-purple-400"><i class="fa-solid fa-chart-line mr-2"></i>Evaluation Result</h3>
@@ -277,7 +276,8 @@
                     <label class="block text-sm font-medium text-slate-300 mb-2">AI Model</label>
                     <select id="model-select" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-indigo-500">
                         <option value="gemini-3.8-flash">gemini-3.8-flash (Default)</option>
-                        <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+                        <option value="gemini-3.7-flash">gemini-3.7-flash (Backup)</option>
+                        <option value="gemini-3.5-flash">gemini-3.5-flash (Light)</option>
                     </select>
                 </div>
                 
@@ -312,7 +312,6 @@
                 liaison_notes: "check‿it‿out (チェケラウト), get‿back (t脱落)"
             },
             playbackSpeed: 1.0,
-            isGenerating: false,
             
             // Audio/Recording
             mediaRecorder: null,
@@ -321,10 +320,16 @@
             audioMimeType: '',
             isRecording: false,
             
-            // Speech Synthesis
-            synthUtterance: null, // Keep ref to prevent GC
+            // Audio Playback (TTS)
+            modelAudioUrl: null, // Holds the blob URL of generated TTS
+            currentPhraseAudioText: '', // Tracks which text the audio is for
             isPlayingModel: false,
-            stopPlaybackRequested: false,
+            targetLoopCount: 1,
+            currentLoopIndex: 0,
+            loopTimeoutId: null,
+            
+            // Fallback Speech Synthesis
+            synthUtterance: null,
             voices: []
         };
 
@@ -358,7 +363,6 @@
 
         // --- DOM Elements ---
         const el = {
-            // Header & Settings
             btnSettings: document.getElementById('btn-settings'),
             apiStatusIndicator: document.getElementById('api-status-indicator'),
             settingsModal: document.getElementById('settings-modal'),
@@ -368,34 +372,32 @@
             btnSaveSettings: document.getElementById('btn-save-settings'),
             btnClearSettings: document.getElementById('btn-clear-settings'),
             
-            // Generate Area
             categoryBtns: document.querySelectorAll('.cat-btn'),
             customTopicContainer: document.getElementById('custom-topic-container'),
             customTopicInput: document.getElementById('custom-topic-input'),
             btnGenerate: document.getElementById('btn-generate'),
             
-            // Display Area
             phraseDisplay: document.getElementById('phrase-display'),
             targetEnglish: document.getElementById('target-english'),
             targetJapanese: document.getElementById('target-japanese'),
             targetWpm: document.getElementById('target-wpm'),
             liaisonNotes: document.getElementById('liaison-notes'),
+            fallbackWarning: document.getElementById('fallback-warning'),
             
-            // Playback Controls
             btnPlayModel: document.getElementById('btn-play-model'),
             btnStopModel: document.getElementById('btn-stop-model'),
             iconPlayModel: document.getElementById('icon-play-model'),
+            playSpinnerContainer: document.getElementById('play-spinner-container'),
             btnLoop3x: document.getElementById('btn-loop-3x'),
             speedBtns: document.querySelectorAll('.speed-btn'),
+            modelAudio: document.getElementById('model-audio'),
             
-            // Recording Controls
             btnRecord: document.getElementById('btn-record'),
             recordText: document.getElementById('record-text'),
             btnPlayMine: document.getElementById('btn-play-mine'),
             btnCompare: document.getElementById('btn-compare'),
             recordedAudio: document.getElementById('recorded-audio'),
             
-            // Evaluation Area
             btnEvaluate: document.getElementById('btn-evaluate'),
             evalResultCard: document.getElementById('eval-result-card'),
             evalScore: document.getElementById('eval-score'),
@@ -403,7 +405,6 @@
             evalLiaison: document.getElementById('eval-liaison'),
             evalImprovement: document.getElementById('eval-improvement'),
             
-            // Toast
             toast: document.getElementById('toast'),
             toastIcon: document.getElementById('toast-icon'),
             toastMessage: document.getElementById('toast-message')
@@ -428,6 +429,13 @@
                 el.apiStatusIndicator.classList.add('bg-red-500');
                 el.apiKeyInput.value = '';
             }
+            
+            // Validating saved model against current options
+            const validModels = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.5-flash'];
+            if (!validModels.includes(state.model)) {
+                state.model = 'gemini-3.8-flash';
+                localStorage.setItem('gemini_model', state.model);
+            }
             el.modelSelect.value = state.model;
         }
 
@@ -450,26 +458,62 @@
             
             setTimeout(() => {
                 el.toast.classList.add('translate-y-20', 'opacity-0');
-                // Reset styling after hide
                 setTimeout(() => {
                      el.toast.className = 'fixed bottom-5 right-5 transform translate-y-20 opacity-0 transition-all duration-300 bg-slate-800 border border-slate-600 text-white px-4 py-3 rounded-lg shadow-xl z-50 flex items-center gap-3';
                 }, 300);
-            }, 3000);
+            }, 3500);
+        }
+
+        // Centralized API Caller with Auto-Fallback for 429 errors
+        async function fetchGeminiWithFallback(payload, baseModel, isTTS = false) {
+            if (!state.apiKey) throw new Error("API Key is required");
+            
+            let targetModel = isTTS ? "gemini-2.5-flash-preview-tts" : baseModel;
+            let url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${state.apiKey}`;
+
+            try {
+                let response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                // Auto Fallback for Text Generation & Evaluation (if using 3.8 and it's too many requests)
+                if (response.status === 429 && targetModel === 'gemini-3.8-flash' && !isTTS) {
+                    showToast('3.8 Flashが混雑しています。3.7 Flashで再試行します...', 'info');
+                    console.warn("429 Too Many Requests on 3.8. Falling back to 3.7");
+                    targetModel = 'gemini-3.7-flash';
+                    url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${state.apiKey}`;
+                    
+                    response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                }
+
+                if (!response.ok) {
+                    const err = await response.json().catch(()=>({}));
+                    throw new Error(err.error?.message || `HTTP Status: ${response.status}`);
+                }
+
+                return await response.json();
+            } catch (error) {
+                console.error("Gemini API Request Failed:", error);
+                throw error;
+            }
         }
 
         function bindEvents() {
-            // Settings
             el.btnSettings.addEventListener('click', () => el.settingsModal.classList.remove('hidden'));
             el.btnCloseModal.addEventListener('click', () => el.settingsModal.classList.add('hidden'));
             el.btnSaveSettings.addEventListener('click', saveSettings);
             el.btnClearSettings.addEventListener('click', clearSettings);
             
-            // Close modal on outside click
             el.settingsModal.addEventListener('click', (e) => {
                 if (e.target === el.settingsModal) el.settingsModal.classList.add('hidden');
             });
 
-            // Category Selection
             el.categoryBtns.forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     el.categoryBtns.forEach(b => {
@@ -489,15 +533,12 @@
                 });
             });
 
-            // Generate
             el.btnGenerate.addEventListener('click', generatePhrase);
 
-            // Playback
-            el.btnPlayModel.addEventListener('click', () => playAudio(1));
-            el.btnLoop3x.addEventListener('click', () => playAudio(3));
-            el.btnStopModel.addEventListener('click', stopAudio);
+            el.btnPlayModel.addEventListener('click', () => handlePlayClick(1));
+            el.btnLoop3x.addEventListener('click', () => handlePlayClick(3));
+            el.btnStopModel.addEventListener('click', stopAudioPlayback);
             
-            // Speed controls
             el.speedBtns.forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     el.speedBtns.forEach(b => {
@@ -507,19 +548,21 @@
                     e.target.classList.remove('text-slate-400');
                     e.target.classList.add('bg-slate-600', 'text-white');
                     state.playbackSpeed = parseFloat(e.target.dataset.speed);
+                    
+                    // Update running audio element speed if playing
+                    if (el.modelAudio) el.modelAudio.playbackRate = state.playbackSpeed;
                 });
             });
 
-            // Recording
             el.btnRecord.addEventListener('click', toggleRecording);
             el.btnPlayMine.addEventListener('click', playRecordedAudio);
             el.btnCompare.addEventListener('click', compareAudio);
-            
-            // Evaluation
             el.btnEvaluate.addEventListener('click', evaluateAudio);
+            
+            // Loop logic for audio element
+            el.modelAudio.addEventListener('ended', onModelAudioEnded);
         }
 
-        // --- Settings Logic ---
         function saveSettings() {
             const key = el.apiKeyInput.value.trim();
             const model = el.modelSelect.value;
@@ -544,10 +587,8 @@
             showToast('API Key cleared');
         }
 
-        // --- Phrase Generation Logic ---
         async function generatePhrase() {
             if (!state.apiKey) {
-                // Fallback mode
                 const randomPhrase = fallbackPhrases[Math.floor(Math.random() * fallbackPhrases.length)];
                 state.currentPhrase = randomPhrase;
                 updatePhraseUI();
@@ -565,11 +606,8 @@
 
             setLoadingState(el.btnGenerate, true, 'Generating...');
 
-            const prompt = `
-あなたはITエンジニア向けの英語コーチです。
-トピック「${topic}」に関連する、実務や海外出張で実際に使われる自然な英会話フレーズを1〜2文で生成してください。
-ネイティブが発音する際に「リエゾン（音の連結）」や「リダクション（音の脱落）」が発生しやすい、実践的な表現を含めること。
-
+            // Security Review Implemented: thinkingConfig removed for stability
+            const prompt = `あなたはITエンジニア向けの英語コーチです。トピック「${topic}」に関連する、実務や海外出張で実際に使われる自然な英会話フレーズを1〜2文で生成してください。ネイティブが発音する際に「リエゾン（音の連結）」や「リダクション（音の脱落）」が発生しやすい、実践的な表現を含めること。
 以下のJSONスキーマに従って厳密にJSONのみを出力してください。
 {
   "type": "object",
@@ -582,43 +620,34 @@
   "required": ["english", "japanese", "wpm", "liaison_notes"]
 }`;
 
-            try {
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/${state.model}:generateContent?key=${state.apiKey}`;
-                
-                const payload = {
-                    contents: [{ parts: [{ text: prompt }] }],
-                    generationConfig: {
-                        responseMimeType: "application/json",
-                        temperature: 0.7
-                    }
-                };
-                
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                if (!response.ok) {
-                    const err = await response.json();
-                    throw new Error(err.error?.message || 'API request failed');
+            const payload = {
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    temperature: 0.7
                 }
+            };
 
-                const data = await response.json();
+            try {
+                const data = await fetchGeminiWithFallback(payload, state.model);
                 const jsonText = data.candidates[0].content.parts[0].text;
-                
-                // Remove markdown code blocks if any
                 const cleanJson = jsonText.replace(/```json\n?|```/g, '').trim();
                 
                 state.currentPhrase = JSON.parse(cleanJson);
                 updatePhraseUI();
                 resetRecordingState();
+                
+                // Clear cached TTS audio so it forces a refetch for the new phrase
+                state.currentPhraseAudioText = '';
+                if(state.modelAudioUrl) {
+                    URL.revokeObjectURL(state.modelAudioUrl);
+                    state.modelAudioUrl = null;
+                }
+                
                 showToast('New phrase generated!', 'success');
-
             } catch (error) {
                 console.error("Generation Error:", error);
                 showToast('Generation failed: ' + error.message, 'error');
-                // Fallback on error
                 state.currentPhrase = fallbackPhrases[Math.floor(Math.random() * fallbackPhrases.length)];
                 updatePhraseUI();
                 resetRecordingState();
@@ -632,13 +661,11 @@
             el.targetJapanese.textContent = state.currentPhrase.japanese;
             el.targetWpm.textContent = `${state.currentPhrase.wpm} WPM`;
             el.liaisonNotes.textContent = state.currentPhrase.liaison_notes;
-            
-            // Reset evaluation UI
             el.evalResultCard.classList.add('hidden');
+            el.fallbackWarning.classList.add('hidden');
         }
 
         function setLoadingState(button, isLoading, htmlContent) {
-            state.isGenerating = isLoading;
             if (isLoading) {
                 button.disabled = true;
                 button.innerHTML = `<span class="spinner"></span> <span class="ml-2">${htmlContent}</span>`;
@@ -650,52 +677,188 @@
             }
         }
 
-        // --- Speech Synthesis ---
-        function initSpeechSynthesis() {
-            // Pre-load voices
-            const loadVoices = () => {
-                state.voices = window.speechSynthesis.getVoices();
-            };
-            loadVoices();
-            if (window.speechSynthesis.onvoiceschanged !== undefined) {
-                window.speechSynthesis.onvoiceschanged = loadVoices;
+        // --- Audio Generation & Decoding Helpers ---
+        function base64ToArrayBuffer(base64) {
+            const binaryString = window.atob(base64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        function pcmToWav(pcmData, sampleRate) {
+            const numChannels = 1;
+            const bitsPerSample = 16;
+            const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
+            const blockAlign = numChannels * (bitsPerSample / 8);
+            const dataSize = pcmData.byteLength;
+            const chunkSize = 36 + dataSize;
+            const buffer = new ArrayBuffer(44 + dataSize);
+            const view = new DataView(buffer);
+
+            // RIFF chunk descriptor
+            writeString(view, 0, 'RIFF');
+            view.setUint32(4, chunkSize, true);
+            writeString(view, 8, 'WAVE');
+
+            // fmt sub-chunk
+            writeString(view, 12, 'fmt ');
+            view.setUint32(16, 16, true); 
+            view.setUint16(20, 1, true); // PCM format
+            view.setUint16(22, numChannels, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, byteRate, true);
+            view.setUint16(32, blockAlign, true);
+            view.setUint16(34, bitsPerSample, true);
+
+            // data sub-chunk
+            writeString(view, 36, 'data');
+            view.setUint32(40, dataSize, true);
+
+            // PCM data
+            const target = new Int16Array(buffer, 44);
+            target.set(pcmData);
+
+            return new Blob([buffer], { type: 'audio/wav' });
+        }
+
+        function writeString(view, offset, string) {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
             }
         }
 
-        async function playAudio(loopCount = 1) {
+        // --- Playback Logic ---
+        async function handlePlayClick(loops = 1) {
             if (state.isPlayingModel) {
-                stopAudio();
+                stopAudioPlayback();
+                return;
             }
             
-            state.stopPlaybackRequested = false;
+            state.targetLoopCount = loops;
+            state.currentLoopIndex = 0;
             state.isPlayingModel = true;
             togglePlaybackUI(true);
+            el.fallbackWarning.classList.add('hidden');
 
-            // iOS Safari対策: ユーザーアクションと同一同期処理内で全ての音声をキューに入れる
-            let playbackPromises = [];
-            for (let i = 0; i < loopCount; i++) {
-                playbackPromises.push(speak(state.currentPhrase.english, state.playbackSpeed));
+            // 1. Cache Hit - Audio is already generated
+            if (state.modelAudioUrl && state.currentPhraseAudioText === state.currentPhrase.english) {
+                startAudioEnginePlayback();
+                return;
+            }
+
+            // 2. Generate Audio via Gemini TTS
+            if (state.apiKey) {
+                el.iconPlayModel.classList.add('hidden');
+                el.playSpinnerContainer.classList.remove('hidden');
                 
-                if (i < loopCount - 1) {
-                    // await sleep の代わりに、無音に近い発話を積んで間を稼ぐ
-                    playbackPromises.push(speak("...", 0.5));
+                try {
+                    const payload = {
+                        contents: [{ parts: [{ text: state.currentPhrase.english }] }],
+                        generationConfig: {
+                            responseModalities: ["AUDIO"],
+                            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } } } // Aoede: clear, breezy US voice
+                        },
+                        // We strictly use the TTS model here, fetched via helper wrapper
+                        model: "gemini-2.5-flash-preview-tts" 
+                    };
+
+                    const response = await fetchGeminiWithFallback(payload, null, true);
+                    const part = response?.candidates?.[0]?.content?.parts?.[0];
+                    
+                    if (part && part.inlineData && part.inlineData.data) {
+                        const audioBase64 = part.inlineData.data;
+                        const mimeType = part.inlineData.mimeType;
+                        
+                        // Extract sampling rate, default to 24000 for gemini TTS
+                        const sampleRateMatch = mimeType.match(/rate=(\d+)/);
+                        const sampleRate = sampleRateMatch ? parseInt(sampleRateMatch[1], 10) : 24000;
+                        
+                        // Convert signed 16-bit PCM to WAV container
+                        const pcmData = base64ToArrayBuffer(audioBase64);
+                        const pcm16 = new Int16Array(pcmData);
+                        const wavBlob = pcmToWav(pcm16, sampleRate);
+                        
+                        if (state.modelAudioUrl) URL.revokeObjectURL(state.modelAudioUrl);
+                        state.modelAudioUrl = URL.createObjectURL(wavBlob);
+                        state.currentPhraseAudioText = state.currentPhrase.english;
+
+                        // UI reset & Play
+                        el.playSpinnerContainer.classList.add('hidden');
+                        el.iconPlayModel.classList.remove('hidden');
+                        
+                        // Proceed to Play
+                        if(state.isPlayingModel) startAudioEnginePlayback();
+                        return;
+                    } else {
+                        throw new Error("Invalid TTS response structure");
+                    }
+                } catch (error) {
+                    console.warn("TTS generation failed, falling back to Web Speech API:", error);
+                    el.playSpinnerContainer.classList.add('hidden');
+                    el.iconPlayModel.classList.remove('hidden');
+                    // Flow continues to fallback below
                 }
             }
+
+            // 3. Fallback: Web Speech API
+            el.fallbackWarning.classList.remove('hidden');
+            startFallbackSpeechSynthesisLoop();
+        }
+
+        function startAudioEnginePlayback() {
+            if (!state.isPlayingModel) return;
             
-            // 全てのキューの再生完了を待つ
-            await Promise.all(playbackPromises);
+            el.modelAudio.src = state.modelAudioUrl;
+            el.modelAudio.playbackRate = state.playbackSpeed;
             
-            if (!state.stopPlaybackRequested) {
-                state.isPlayingModel = false;
-                togglePlaybackUI(false);
+            el.modelAudio.play().catch(e => {
+                console.error("Audio engine play error", e);
+                stopAudioPlayback();
+                showToast("Cannot play audio. Please interact with the page.", "error");
+            });
+        }
+
+        // Loop controller for <audio> element
+        function onModelAudioEnded() {
+            if (!state.isPlayingModel) return;
+            
+            state.currentLoopIndex++;
+            
+            if (state.currentLoopIndex < state.targetLoopCount) {
+                // Wait 1.5 seconds between loops
+                state.loopTimeoutId = setTimeout(() => {
+                    if (state.isPlayingModel) {
+                        el.modelAudio.currentTime = 0;
+                        el.modelAudio.playbackRate = state.playbackSpeed; // Re-apply rate just in case
+                        el.modelAudio.play().catch(e => {
+                            console.error("Audio loop retry error", e);
+                            stopAudioPlayback();
+                        });
+                    }
+                }, 1500);
+            } else {
+                // Finished looping
+                stopAudioPlayback();
             }
         }
 
-        function stopAudio() {
-            window.speechSynthesis.cancel();
-            state.stopPlaybackRequested = true;
+        function stopAudioPlayback() {
             state.isPlayingModel = false;
+            
+            // Stop <audio> engine
+            el.modelAudio.pause();
+            el.modelAudio.currentTime = 0;
+            if (state.loopTimeoutId) clearTimeout(state.loopTimeoutId);
+            
+            // Stop Fallback Engine
+            window.speechSynthesis.cancel();
+            
             togglePlaybackUI(false);
+            el.playSpinnerContainer.classList.add('hidden');
+            el.iconPlayModel.classList.remove('hidden');
         }
 
         function togglePlaybackUI(isPlaying) {
@@ -708,18 +871,43 @@
             }
         }
 
-        function speak(text, rate) {
+        // --- Fallback (Web Speech API) ---
+        function initSpeechSynthesis() {
+            const loadVoices = () => { state.voices = window.speechSynthesis.getVoices(); };
+            loadVoices();
+            if (window.speechSynthesis.onvoiceschanged !== undefined) {
+                window.speechSynthesis.onvoiceschanged = loadVoices;
+            }
+        }
+
+        async function startFallbackSpeechSynthesisLoop() {
+             // iOS Safari GC Issue Mitigation Strategy via Promises & sequential queue
+            let playbackPromises = [];
+            for (let i = 0; i < state.targetLoopCount; i++) {
+                playbackPromises.push(speakSynthesis(state.currentPhrase.english, state.playbackSpeed));
+                if (i < state.targetLoopCount - 1) {
+                    playbackPromises.push(speakSynthesis("...", 0.5)); // Dummy speech as sleep mechanism
+                }
+            }
+            
+            await Promise.all(playbackPromises);
+            
+            if (state.isPlayingModel) {
+                stopAudioPlayback();
+            }
+        }
+
+        function speakSynthesis(text, rate) {
             return new Promise((resolve) => {
                 const utterance = new SpeechSynthesisUtterance(text);
                 
-                // SafariのGC(ガベージコレクション)による途中停止を防ぐため配列に保持
+                // GC Protection
                 if (!state.activeUtterances) state.activeUtterances = [];
                 state.activeUtterances.push(utterance);
                 
                 utterance.lang = 'en-US';
                 utterance.rate = rate;
                 
-                // Try to find a good US voice
                 let usVoice = state.voices.find(v => v.lang === 'en-US' && v.name.includes('Google')) || 
                               state.voices.find(v => v.lang === 'en-US' && v.name.includes('Samantha')) ||
                               state.voices.find(v => v.lang === 'en-US');
@@ -727,42 +915,27 @@
                 if (usVoice) utterance.voice = usVoice;
 
                 utterance.onend = () => resolve();
-                utterance.onerror = (e) => {
-                    console.warn("Speech synthesis error", e);
-                    resolve();
-                };
+                utterance.onerror = (e) => resolve(); // fail silently on error
                 
                 window.speechSynthesis.speak(utterance);
             });
         }
 
-        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
         // --- Recording Logic ---
         function determineAudioMimeType() {
-            const types = [
-                'audio/webm;codecs=opus',
-                'audio/webm',
-                'audio/mp4',
-                'audio/aac',
-                'audio/ogg'
-            ];
+            const types = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/aac', 'audio/ogg'];
             for (let type of types) {
                 if (MediaRecorder.isTypeSupported(type)) {
                     state.audioMimeType = type;
-                    console.log("Using Audio MIME Type:", state.audioMimeType);
                     return;
                 }
             }
-            state.audioMimeType = ''; // Fallback, let browser decide
+            state.audioMimeType = ''; 
         }
 
         async function toggleRecording() {
-            if (state.isRecording) {
-                stopRecording();
-            } else {
-                startRecording();
-            }
+            if (state.isRecording) stopRecording();
+            else startRecording();
         }
 
         async function startRecording() {
@@ -778,24 +951,21 @@
                 };
 
                 state.mediaRecorder.onstop = () => {
-                    const type = state.audioMimeType || 'audio/webm'; // default fallback for blob
+                    const type = state.audioMimeType || 'audio/webm';
                     state.recordedBlob = new Blob(state.audioChunks, { type: type });
                     const audioUrl = URL.createObjectURL(state.recordedBlob);
                     el.recordedAudio.src = audioUrl;
                     
-                    // Enable buttons
                     el.btnPlayMine.disabled = false;
                     el.btnCompare.disabled = false;
                     el.btnEvaluate.disabled = false;
                     
-                    // Stop tracks to release mic
-                    stream.getTracks().forEach(track => track.stop());
+                    stream.getTracks().forEach(track => track.stop()); // Free mic
                 };
 
                 state.mediaRecorder.start();
                 state.isRecording = true;
                 
-                // UI Update
                 el.btnRecord.classList.replace('bg-rose-600', 'bg-transparent');
                 el.btnRecord.classList.add('border-2', 'border-rose-500', 'text-rose-400', 'recording-pulse');
                 el.recordText.textContent = "Stop Recording";
@@ -804,8 +974,7 @@
                 el.btnEvaluate.disabled = true;
 
             } catch (err) {
-                console.error("Mic error:", err);
-                showToast("Microphone access denied or error: " + err.message, "error");
+                showToast("Microphone access denied or error", "error");
             }
         }
 
@@ -814,7 +983,6 @@
                 state.mediaRecorder.stop();
                 state.isRecording = false;
                 
-                // UI Update
                 el.btnRecord.classList.replace('bg-transparent', 'bg-rose-600');
                 el.btnRecord.classList.remove('border-2', 'border-rose-500', 'text-rose-400', 'recording-pulse');
                 el.recordText.textContent = "Start Recording";
@@ -831,25 +999,38 @@
         }
 
         function playRecordedAudio() {
-            if (state.recordedBlob) {
-                el.recordedAudio.play();
-            }
+            if (state.recordedBlob) el.recordedAudio.play();
         }
 
         async function compareAudio() {
             if (!state.recordedBlob) return;
             
-            // Play Model
-            await speak(state.currentPhrase.english, state.playbackSpeed);
+            // Wait for model play to finish (simulate blockingly if needed)
+            await new Promise((resolve) => {
+                 // Trigger native audio engine play once
+                 state.targetLoopCount = 1;
+                 state.currentLoopIndex = 0;
+                 state.isPlayingModel = true;
+                 
+                 const playFinished = () => {
+                     el.modelAudio.removeEventListener('ended', playFinished);
+                     resolve();
+                 };
+                 
+                 el.modelAudio.addEventListener('ended', playFinished);
+                 startAudioEnginePlayback();
+                 
+                 // Failsafe timeout incase TTS is broken
+                 setTimeout(() => { resolve(); }, 5000); 
+            });
             
-            // Wait 1s
-            await sleep(1000);
-            
-            // Play Mine
-            playRecordedAudio();
+            // Slight delay then play recorded
+            setTimeout(() => {
+                playRecordedAudio();
+            }, 800);
         }
 
-        // --- Audio Evaluation (Gemini Multimodal) ---
+        // --- Audio Evaluation (Multimodal AI) ---
         async function evaluateAudio() {
             if (!state.apiKey) {
                 showToast("API Key is required for evaluation.", "error");
@@ -863,25 +1044,25 @@
 
             try {
                 // 1. Convert Blob to Base64
-                const base64Data = await blobToBase64(state.recordedBlob);
-                
-                // Clean base64 string (remove data URL prefix)
+                const base64Data = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(state.recordedBlob);
+                });
                 const base64Clean = base64Data.split(',')[1];
                 
-                // Gemini APIエラー対策: MIMEタイプから `codecs=...` を除外する
+                // Security Review Implemented: MIME type normalization to prevent format errors
                 const rawMime = state.recordedBlob.type || state.audioMimeType || 'audio/webm';
                 const mime = rawMime.split(';')[0].trim();
 
-                const prompt = `
-あなたは厳格かつ励まし上手なIT英語発音コーチです。
-添付の音声は、学習者が以下の目標英文をシャドーイング・発音したものです。
+                const prompt = `あなたは厳格かつ励まし上手なIT英語発音コーチです。添付の音声は、学習者が以下の目標英文をシャドーイング・発音したものです。
 
 目標英文: "${state.currentPhrase.english}"
 注意すべきリエゾン: ${state.currentPhrase.liaison_notes}
 
 この音声データを直接聞き取り、発音の正確性、流暢さ、リエゾンの達成度を評価してください。
 以下のJSONスキーマに従って厳密にJSONのみを出力してください。
-
 {
   "type": "object",
   "properties": {
@@ -893,60 +1074,38 @@
   "required": ["score", "transcript", "liaison_achievement", "improvement_point"]
 }`;
 
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/${state.model}:generateContent?key=${state.apiKey}`;
-                
                 const payload = {
                     contents: [
                         {
                             role: "user",
                             parts: [
                                 { text: prompt },
-                                {
-                                    inlineData: {
-                                        mimeType: mime,
-                                        data: base64Clean
-                                    }
-                                }
+                                { inlineData: { mimeType: mime, data: base64Clean } }
                             ]
                         }
                     ],
                     generationConfig: {
                         responseMimeType: "application/json",
-                        temperature: 0.2 // Lower temp for more objective evaluation
+                        temperature: 0.2 // Lower temp for consistency
                     }
                 };
 
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                if (!response.ok) {
-                    const err = await response.json();
-                    throw new Error(err.error?.message || 'API request failed');
-                }
-
-                const data = await response.json();
+                const data = await fetchGeminiWithFallback(payload, state.model);
                 const jsonText = data.candidates[0].content.parts[0].text;
                 const cleanJson = jsonText.replace(/```json\n?|```/g, '').trim();
                 const result = JSON.parse(cleanJson);
 
-                // Update UI
                 el.evalScore.textContent = result.score;
                 el.evalTranscript.textContent = `"${result.transcript}"`;
                 el.evalLiaison.textContent = result.liaison_achievement;
                 el.evalImprovement.textContent = result.improvement_point;
                 
-                // Colorize score
                 el.evalScore.className = 'text-xl font-black ';
                 if(result.score >= 80) el.evalScore.classList.add('text-emerald-400');
                 else if(result.score >= 60) el.evalScore.classList.add('text-amber-400');
                 else el.evalScore.classList.add('text-rose-400');
 
                 el.evalResultCard.classList.remove('hidden');
-                
-                // Scroll to result
                 el.evalResultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
             } catch (error) {
@@ -957,17 +1116,7 @@
             }
         }
 
-        // Helper: Blob to Base64
-        function blobToBase64(blob) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result);
-                reader.onerror = reject;
-                reader.readAsDataURL(blob);
-            });
-        }
-
-        // Initialize application
+        // Kickoff
         window.addEventListener('DOMContentLoaded', init);
 
     </script>
