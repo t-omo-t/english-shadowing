@@ -593,9 +593,6 @@
                     }
                 };
                 
-                // Add thinking budget 0 to reduce latency if model supports it (like new flashes, if not it might be ignored or error, we'll try standard config first, but requirement asks for it. We'll add it safely if possible, but standard flash doesn't need it for low latency. Let's add it to generationConfig as requested).
-                payload.generationConfig.thinkingConfig = { thinkingBudget: 0 };
-
                 const response = await fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -674,18 +671,24 @@
             state.isPlayingModel = true;
             togglePlaybackUI(true);
 
+            // iOS Safari対策: ユーザーアクションと同一同期処理内で全ての音声をキューに入れる
+            let playbackPromises = [];
             for (let i = 0; i < loopCount; i++) {
-                if (state.stopPlaybackRequested) break;
+                playbackPromises.push(speak(state.currentPhrase.english, state.playbackSpeed));
                 
-                await speak(state.currentPhrase.english, state.playbackSpeed);
-                
-                if (i < loopCount - 1 && !state.stopPlaybackRequested) {
-                    await sleep(1500); // 1.5s interval
+                if (i < loopCount - 1) {
+                    // await sleep の代わりに、無音に近い発話を積んで間を稼ぐ
+                    playbackPromises.push(speak("...", 0.5));
                 }
             }
             
-            state.isPlayingModel = false;
-            togglePlaybackUI(false);
+            // 全てのキューの再生完了を待つ
+            await Promise.all(playbackPromises);
+            
+            if (!state.stopPlaybackRequested) {
+                state.isPlayingModel = false;
+                togglePlaybackUI(false);
+            }
         }
 
         function stopAudio() {
@@ -708,7 +711,10 @@
         function speak(text, rate) {
             return new Promise((resolve) => {
                 const utterance = new SpeechSynthesisUtterance(text);
-                state.synthUtterance = utterance; // Keep ref
+                
+                // SafariのGC(ガベージコレクション)による途中停止を防ぐため配列に保持
+                if (!state.activeUtterances) state.activeUtterances = [];
+                state.activeUtterances.push(utterance);
                 
                 utterance.lang = 'en-US';
                 utterance.rate = rate;
@@ -861,7 +867,10 @@
                 
                 // Clean base64 string (remove data URL prefix)
                 const base64Clean = base64Data.split(',')[1];
-                const mime = state.recordedBlob.type || 'audio/webm'; // Ensure mime type exists
+                
+                // Gemini APIエラー対策: MIMEタイプから `codecs=...` を除外する
+                const rawMime = state.recordedBlob.type || state.audioMimeType || 'audio/webm';
+                const mime = rawMime.split(';')[0].trim();
 
                 const prompt = `
 あなたは厳格かつ励まし上手なIT英語発音コーチです。
