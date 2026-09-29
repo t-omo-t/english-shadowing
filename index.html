@@ -159,8 +159,8 @@
 
             <!-- Fallback Warning (Hidden by default) -->
             <div id="fallback-warning" class="hidden mb-4 bg-amber-900/40 border border-amber-700/50 p-3 rounded-lg flex items-start gap-2">
-                <i class="fa-solid fa-triangle-exclamation text-amber-400 mt-0.5"></i>
-                <p class="text-xs text-amber-200">API未設定・通信エラーのため代替音声を使用しています。<br><span class="font-bold">※iPhone等の消音モード時（マナーモード）は音が鳴りません。スイッチを解除してご利用ください。</span></p>
+                <i class="fa-solid fa-circle-info text-amber-400 mt-0.5"></i>
+                <p class="text-xs text-amber-200">API未設定のため、内蔵のオフラインフレーズを使用しています。</p>
             </div>
 
             <!-- Playback Controls -->
@@ -187,9 +187,6 @@
                     <button class="speed-btn px-3 py-1 rounded text-xs font-medium text-slate-400 hover:text-white transition-colors" data-speed="1.2">1.2x</button>
                 </div>
             </div>
-
-            <!-- Hidden audio element for Model TTS -->
-            <audio id="model-audio" class="hidden"></audio>
         </section>
 
         <!-- 3. Record & Evaluate Area -->
@@ -320,18 +317,19 @@
             audioMimeType: '',
             isRecording: false,
             
-            // Audio Playback (TTS)
-            modelAudioUrl: null, // Holds the blob URL of generated TTS
-            currentPhraseAudioText: '', // Tracks which text the audio is for
+            // Audio Playback
             isPlayingModel: false,
             targetLoopCount: 1,
             currentLoopIndex: 0,
-            loopTimeoutId: null,
             
-            // Fallback Speech Synthesis
-            synthUtterance: null,
-            voices: []
+            // Speech Synthesis
+            voices: [],
+            activeUtterances: []
         };
+
+        // iPhone 消音モード(マナーモード)対策用 無音オーディオハック (極小Base64 WAV)
+        const silentBase64 = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
+        const silentAudio = new Audio(silentBase64);
 
         // Fallback Database
         const fallbackPhrases = [
@@ -390,7 +388,6 @@
             playSpinnerContainer: document.getElementById('play-spinner-container'),
             btnLoop3x: document.getElementById('btn-loop-3x'),
             speedBtns: document.querySelectorAll('.speed-btn'),
-            modelAudio: document.getElementById('model-audio'),
             
             btnRecord: document.getElementById('btn-record'),
             recordText: document.getElementById('record-text'),
@@ -410,7 +407,6 @@
             toastMessage: document.getElementById('toast-message')
         };
 
-        // --- Init ---
         function init() {
             updateApiStatusUI();
             updatePhraseUI();
@@ -430,7 +426,7 @@
                 el.apiKeyInput.value = '';
             }
             
-            // Validating saved model against current options
+            // Validating saved model against current options (2.5 is removed)
             const validModels = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.5-flash'];
             if (!validModels.includes(state.model)) {
                 state.model = 'gemini-3.8-flash';
@@ -464,44 +460,56 @@
             }, 3500);
         }
 
-        // Centralized API Caller with Auto-Fallback for 429 errors
-        async function fetchGeminiWithFallback(payload, baseModel, isTTS = false) {
+        // Centralized API Caller with Auto-Fallback for 429/503 (High Demand) errors
+        async function fetchGeminiWithFallback(payload, baseModel) {
             if (!state.apiKey) throw new Error("API Key is required");
             
-            let targetModel = isTTS ? "gemini-2.5-flash-preview-tts" : baseModel;
-            let url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${state.apiKey}`;
+            // Build fallback cascade based on selected model
+            let modelsToTry = [baseModel];
+            if (baseModel === 'gemini-3.8-flash') {
+                modelsToTry = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.5-flash'];
+            } else if (baseModel === 'gemini-3.7-flash') {
+                modelsToTry = ['gemini-3.7-flash', 'gemini-3.5-flash'];
+            }
 
-            try {
-                let response = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
+            let lastError = null;
 
-                // Auto Fallback for Text Generation & Evaluation (if using 3.8 and it's too many requests)
-                if (response.status === 429 && targetModel === 'gemini-3.8-flash' && !isTTS) {
-                    showToast('3.8 Flashが混雑しています。3.7 Flashで再試行します...', 'info');
-                    console.warn("429 Too Many Requests on 3.8. Falling back to 3.7");
-                    targetModel = 'gemini-3.7-flash';
-                    url = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${state.apiKey}`;
-                    
-                    response = await fetch(url, {
+            for (let model of modelsToTry) {
+                let url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${state.apiKey}`;
+
+                try {
+                    let response = await fetch(url, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(payload)
                     });
-                }
 
-                if (!response.ok) {
-                    const err = await response.json().catch(()=>({}));
-                    throw new Error(err.error?.message || `HTTP Status: ${response.status}`);
-                }
+                    // Auto Fallback for overloaded servers
+                    if (response.status === 429 || response.status === 503) {
+                        console.warn(`Model ${model} returned ${response.status} (High Demand). Trying next...`);
+                        lastError = new Error(`HTTP Status: ${response.status} (Server busy)`);
+                        continue; 
+                    }
 
-                return await response.json();
-            } catch (error) {
-                console.error("Gemini API Request Failed:", error);
-                throw error;
+                    if (!response.ok) {
+                        const err = await response.json().catch(()=>({}));
+                        throw new Error(err.error?.message || `HTTP Status: ${response.status}`);
+                    }
+
+                    // Notification if fallback was used
+                    if (model !== baseModel) {
+                        showToast(`${baseModel}が混雑中のため、${model}で結果を取得しました。`, 'info');
+                    }
+                    
+                    return await response.json();
+
+                } catch (error) {
+                    console.error(`Gemini API Request Failed for ${model}:`, error);
+                    lastError = error;
+                }
             }
+            
+            throw lastError || new Error("All fallback models failed.");
         }
 
         function bindEvents() {
@@ -548,9 +556,6 @@
                     e.target.classList.remove('text-slate-400');
                     e.target.classList.add('bg-slate-600', 'text-white');
                     state.playbackSpeed = parseFloat(e.target.dataset.speed);
-                    
-                    // Update running audio element speed if playing
-                    if (el.modelAudio) el.modelAudio.playbackRate = state.playbackSpeed;
                 });
             });
 
@@ -558,9 +563,6 @@
             el.btnPlayMine.addEventListener('click', playRecordedAudio);
             el.btnCompare.addEventListener('click', compareAudio);
             el.btnEvaluate.addEventListener('click', evaluateAudio);
-            
-            // Loop logic for audio element
-            el.modelAudio.addEventListener('ended', onModelAudioEnded);
         }
 
         function saveSettings() {
@@ -588,11 +590,14 @@
         }
 
         async function generatePhrase() {
+            // Audio unlock hack for iOS Safari
+            silentAudio.play().catch(()=>{});
+            
             if (!state.apiKey) {
                 const randomPhrase = fallbackPhrases[Math.floor(Math.random() * fallbackPhrases.length)];
                 state.currentPhrase = randomPhrase;
                 updatePhraseUI();
-                showToast('Using fallback data (API Key not set)');
+                el.fallbackWarning.classList.remove('hidden');
                 resetRecordingState();
                 return;
             }
@@ -606,7 +611,7 @@
 
             setLoadingState(el.btnGenerate, true, 'Generating...');
 
-            // Security Review Implemented: thinkingConfig removed for stability
+            // TTS(Audio) is intentionally completely removed here to ensure instant generation and avoid 429 High Demand limits.
             const prompt = `あなたはITエンジニア向けの英語コーチです。トピック「${topic}」に関連する、実務や海外出張で実際に使われる自然な英会話フレーズを1〜2文で生成してください。ネイティブが発音する際に「リエゾン（音の連結）」や「リダクション（音の脱落）」が発生しやすい、実践的な表現を含めること。
 以下のJSONスキーマに従って厳密にJSONのみを出力してください。
 {
@@ -625,6 +630,7 @@
                 generationConfig: {
                     responseMimeType: "application/json",
                     temperature: 0.7
+                    // thinkingConfig omitted as per previous security review for safety
                 }
             };
 
@@ -637,20 +643,10 @@
                 updatePhraseUI();
                 resetRecordingState();
                 
-                // Clear cached TTS audio so it forces a refetch for the new phrase
-                state.currentPhraseAudioText = '';
-                if(state.modelAudioUrl) {
-                    URL.revokeObjectURL(state.modelAudioUrl);
-                    state.modelAudioUrl = null;
-                }
-                
                 showToast('New phrase generated!', 'success');
             } catch (error) {
                 console.error("Generation Error:", error);
                 showToast('Generation failed: ' + error.message, 'error');
-                state.currentPhrase = fallbackPhrases[Math.floor(Math.random() * fallbackPhrases.length)];
-                updatePhraseUI();
-                resetRecordingState();
             } finally {
                 setLoadingState(el.btnGenerate, false, '<i class="fa-solid fa-wand-magic-sparkles"></i> Generate New Phrase');
             }
@@ -677,183 +673,86 @@
             }
         }
 
-        // --- Audio Generation & Decoding Helpers ---
-        function base64ToArrayBuffer(base64) {
-            const binaryString = window.atob(base64);
-            const len = binaryString.length;
-            const bytes = new Uint8Array(len);
-            for (let i = 0; i < len; i++) {
-                bytes[i] = binaryString.charCodeAt(i);
-            }
-            return bytes.buffer;
-        }
-
-        function pcmToWav(pcmData, sampleRate) {
-            const numChannels = 1;
-            const bitsPerSample = 16;
-            const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
-            const blockAlign = numChannels * (bitsPerSample / 8);
-            const dataSize = pcmData.byteLength;
-            const chunkSize = 36 + dataSize;
-            const buffer = new ArrayBuffer(44 + dataSize);
-            const view = new DataView(buffer);
-
-            // RIFF chunk descriptor
-            writeString(view, 0, 'RIFF');
-            view.setUint32(4, chunkSize, true);
-            writeString(view, 8, 'WAVE');
-
-            // fmt sub-chunk
-            writeString(view, 12, 'fmt ');
-            view.setUint32(16, 16, true); 
-            view.setUint16(20, 1, true); // PCM format
-            view.setUint16(22, numChannels, true);
-            view.setUint32(24, sampleRate, true);
-            view.setUint32(28, byteRate, true);
-            view.setUint16(32, blockAlign, true);
-            view.setUint16(34, bitsPerSample, true);
-
-            // data sub-chunk
-            writeString(view, 36, 'data');
-            view.setUint32(40, dataSize, true);
-
-            // PCM data
-            const target = new Int16Array(buffer, 44);
-            target.set(pcmData);
-
-            return new Blob([buffer], { type: 'audio/wav' });
-        }
-
-        function writeString(view, offset, string) {
-            for (let i = 0; i < string.length; i++) {
-                view.setUint8(offset + i, string.charCodeAt(i));
+        function initSpeechSynthesis() {
+            const loadVoices = () => { state.voices = window.speechSynthesis.getVoices(); };
+            loadVoices();
+            if (window.speechSynthesis.onvoiceschanged !== undefined) {
+                window.speechSynthesis.onvoiceschanged = loadVoices;
             }
         }
 
-        // --- Playback Logic ---
         async function handlePlayClick(loops = 1) {
             if (state.isPlayingModel) {
                 stopAudioPlayback();
                 return;
             }
             
+            // 🔥 The iOS Safari Hack: Play a silent audio immediately on user interaction
+            // This forces Safari to switch the audio session to "media" mode, 
+            // bypassing the hardware silent switch for upcoming SpeechSynthesis sounds.
+            silentAudio.play().catch(e => console.log('Silent audio unlock skipped/failed'));
+
             state.targetLoopCount = loops;
             state.currentLoopIndex = 0;
             state.isPlayingModel = true;
             togglePlaybackUI(true);
-            el.fallbackWarning.classList.add('hidden');
 
-            // 1. Cache Hit - Audio is already generated
-            if (state.modelAudioUrl && state.currentPhraseAudioText === state.currentPhrase.english) {
-                startAudioEnginePlayback();
-                return;
-            }
+            // Execute the synthesized speech loop
+            await startSpeechSynthesisLoop();
+        }
 
-            // 2. Generate Audio via Gemini TTS
-            if (state.apiKey) {
-                el.iconPlayModel.classList.add('hidden');
-                el.playSpinnerContainer.classList.remove('hidden');
+        async function startSpeechSynthesisLoop() {
+             // iOS Safari GC Issue Mitigation Strategy via Promises & sequential queue
+             // We avoid using "await sleep()" as iOS Safari suspends timer-based audio triggers.
+            for (let i = 0; i < state.targetLoopCount; i++) {
+                if (!state.isPlayingModel) break;
                 
-                try {
-                    const payload = {
-                        contents: [{ parts: [{ text: state.currentPhrase.english }] }],
-                        generationConfig: {
-                            responseModalities: ["AUDIO"],
-                            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } } } // Aoede: clear, breezy US voice
-                        },
-                        // We strictly use the TTS model here, fetched via helper wrapper
-                        model: "gemini-2.5-flash-preview-tts" 
-                    };
-
-                    const response = await fetchGeminiWithFallback(payload, null, true);
-                    const part = response?.candidates?.[0]?.content?.parts?.[0];
-                    
-                    if (part && part.inlineData && part.inlineData.data) {
-                        const audioBase64 = part.inlineData.data;
-                        const mimeType = part.inlineData.mimeType;
-                        
-                        // Extract sampling rate, default to 24000 for gemini TTS
-                        const sampleRateMatch = mimeType.match(/rate=(\d+)/);
-                        const sampleRate = sampleRateMatch ? parseInt(sampleRateMatch[1], 10) : 24000;
-                        
-                        // Convert signed 16-bit PCM to WAV container
-                        const pcmData = base64ToArrayBuffer(audioBase64);
-                        const pcm16 = new Int16Array(pcmData);
-                        const wavBlob = pcmToWav(pcm16, sampleRate);
-                        
-                        if (state.modelAudioUrl) URL.revokeObjectURL(state.modelAudioUrl);
-                        state.modelAudioUrl = URL.createObjectURL(wavBlob);
-                        state.currentPhraseAudioText = state.currentPhrase.english;
-
-                        // UI reset & Play
-                        el.playSpinnerContainer.classList.add('hidden');
-                        el.iconPlayModel.classList.remove('hidden');
-                        
-                        // Proceed to Play
-                        if(state.isPlayingModel) startAudioEnginePlayback();
-                        return;
-                    } else {
-                        throw new Error("Invalid TTS response structure");
-                    }
-                } catch (error) {
-                    console.warn("TTS generation failed, falling back to Web Speech API:", error);
-                    el.playSpinnerContainer.classList.add('hidden');
-                    el.iconPlayModel.classList.remove('hidden');
-                    // Flow continues to fallback below
+                // Actual Phrase
+                await speakSynthesis(state.currentPhrase.english, state.playbackSpeed);
+                
+                // Pause (Dummy Phrase) instead of Timeout to keep audio session alive and not break iOS rules
+                if (i < state.targetLoopCount - 1 && state.isPlayingModel) {
+                    await speakSynthesis("...", 0.5); 
                 }
             }
-
-            // 3. Fallback: Web Speech API
-            el.fallbackWarning.classList.remove('hidden');
-            startFallbackSpeechSynthesisLoop();
-        }
-
-        function startAudioEnginePlayback() {
-            if (!state.isPlayingModel) return;
             
-            el.modelAudio.src = state.modelAudioUrl;
-            el.modelAudio.playbackRate = state.playbackSpeed;
-            
-            el.modelAudio.play().catch(e => {
-                console.error("Audio engine play error", e);
-                stopAudioPlayback();
-                showToast("Cannot play audio. Please interact with the page.", "error");
-            });
-        }
-
-        // Loop controller for <audio> element
-        function onModelAudioEnded() {
-            if (!state.isPlayingModel) return;
-            
-            state.currentLoopIndex++;
-            
-            if (state.currentLoopIndex < state.targetLoopCount) {
-                // Wait 1.5 seconds between loops
-                state.loopTimeoutId = setTimeout(() => {
-                    if (state.isPlayingModel) {
-                        el.modelAudio.currentTime = 0;
-                        el.modelAudio.playbackRate = state.playbackSpeed; // Re-apply rate just in case
-                        el.modelAudio.play().catch(e => {
-                            console.error("Audio loop retry error", e);
-                            stopAudioPlayback();
-                        });
-                    }
-                }, 1500);
-            } else {
-                // Finished looping
+            if (state.isPlayingModel) {
                 stopAudioPlayback();
             }
+        }
+
+        function speakSynthesis(text, rate) {
+            return new Promise((resolve) => {
+                if (!state.isPlayingModel) {
+                    resolve();
+                    return;
+                }
+                
+                const utterance = new SpeechSynthesisUtterance(text);
+                
+                // GC Protection (Keep reference in state array)
+                if (!state.activeUtterances) state.activeUtterances = [];
+                state.activeUtterances.push(utterance);
+                if (state.activeUtterances.length > 10) state.activeUtterances.shift();
+                
+                utterance.lang = 'en-US';
+                utterance.rate = rate;
+                
+                let usVoice = state.voices.find(v => v.lang === 'en-US' && v.name.includes('Google')) || 
+                              state.voices.find(v => v.lang === 'en-US' && v.name.includes('Samantha')) ||
+                              state.voices.find(v => v.lang === 'en-US');
+                
+                if (usVoice) utterance.voice = usVoice;
+
+                utterance.onend = () => resolve();
+                utterance.onerror = () => resolve(); // fail silently on error and continue
+                
+                window.speechSynthesis.speak(utterance);
+            });
         }
 
         function stopAudioPlayback() {
             state.isPlayingModel = false;
-            
-            // Stop <audio> engine
-            el.modelAudio.pause();
-            el.modelAudio.currentTime = 0;
-            if (state.loopTimeoutId) clearTimeout(state.loopTimeoutId);
-            
-            // Stop Fallback Engine
             window.speechSynthesis.cancel();
             
             togglePlaybackUI(false);
@@ -871,57 +770,6 @@
             }
         }
 
-        // --- Fallback (Web Speech API) ---
-        function initSpeechSynthesis() {
-            const loadVoices = () => { state.voices = window.speechSynthesis.getVoices(); };
-            loadVoices();
-            if (window.speechSynthesis.onvoiceschanged !== undefined) {
-                window.speechSynthesis.onvoiceschanged = loadVoices;
-            }
-        }
-
-        async function startFallbackSpeechSynthesisLoop() {
-             // iOS Safari GC Issue Mitigation Strategy via Promises & sequential queue
-            let playbackPromises = [];
-            for (let i = 0; i < state.targetLoopCount; i++) {
-                playbackPromises.push(speakSynthesis(state.currentPhrase.english, state.playbackSpeed));
-                if (i < state.targetLoopCount - 1) {
-                    playbackPromises.push(speakSynthesis("...", 0.5)); // Dummy speech as sleep mechanism
-                }
-            }
-            
-            await Promise.all(playbackPromises);
-            
-            if (state.isPlayingModel) {
-                stopAudioPlayback();
-            }
-        }
-
-        function speakSynthesis(text, rate) {
-            return new Promise((resolve) => {
-                const utterance = new SpeechSynthesisUtterance(text);
-                
-                // GC Protection
-                if (!state.activeUtterances) state.activeUtterances = [];
-                state.activeUtterances.push(utterance);
-                
-                utterance.lang = 'en-US';
-                utterance.rate = rate;
-                
-                let usVoice = state.voices.find(v => v.lang === 'en-US' && v.name.includes('Google')) || 
-                              state.voices.find(v => v.lang === 'en-US' && v.name.includes('Samantha')) ||
-                              state.voices.find(v => v.lang === 'en-US');
-                
-                if (usVoice) utterance.voice = usVoice;
-
-                utterance.onend = () => resolve();
-                utterance.onerror = (e) => resolve(); // fail silently on error
-                
-                window.speechSynthesis.speak(utterance);
-            });
-        }
-
-        // --- Recording Logic ---
         function determineAudioMimeType() {
             const types = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/aac', 'audio/ogg'];
             for (let type of types) {
@@ -960,7 +808,7 @@
                     el.btnCompare.disabled = false;
                     el.btnEvaluate.disabled = false;
                     
-                    stream.getTracks().forEach(track => track.stop()); // Free mic
+                    stream.getTracks().forEach(track => track.stop()); // Free mic stream memory
                 };
 
                 state.mediaRecorder.start();
@@ -1005,32 +853,24 @@
         async function compareAudio() {
             if (!state.recordedBlob) return;
             
-            // Wait for model play to finish (simulate blockingly if needed)
-            await new Promise((resolve) => {
-                 // Trigger native audio engine play once
-                 state.targetLoopCount = 1;
-                 state.currentLoopIndex = 0;
-                 state.isPlayingModel = true;
-                 
-                 const playFinished = () => {
-                     el.modelAudio.removeEventListener('ended', playFinished);
-                     resolve();
-                 };
-                 
-                 el.modelAudio.addEventListener('ended', playFinished);
-                 startAudioEnginePlayback();
-                 
-                 // Failsafe timeout incase TTS is broken
-                 setTimeout(() => { resolve(); }, 5000); 
-            });
+            // Audio unlock hack just in case
+            silentAudio.play().catch(()=>{});
+
+            // 1. Play the synthesized model target
+            state.targetLoopCount = 1;
+            state.currentLoopIndex = 0;
+            state.isPlayingModel = true;
+            togglePlaybackUI(true);
             
-            // Slight delay then play recorded
+            await speakSynthesis(state.currentPhrase.english, state.playbackSpeed);
+            stopAudioPlayback();
+            
+            // 2. Short natural delay, then play recorded user audio
             setTimeout(() => {
                 playRecordedAudio();
             }, 800);
         }
 
-        // --- Audio Evaluation (Multimodal AI) ---
         async function evaluateAudio() {
             if (!state.apiKey) {
                 showToast("API Key is required for evaluation.", "error");
@@ -1053,8 +893,8 @@
                 const base64Clean = base64Data.split(',')[1];
                 
                 // Security Review Implemented: MIME type normalization to prevent format errors
-                const rawMime = state.recordedBlob.type || state.audioMimeType || 'audio/webm';
-                const mime = rawMime.split(';')[0].trim();
+                let rawMime = state.recordedBlob.type || state.audioMimeType || 'audio/webm';
+                const mime = rawMime.split(';')[0].trim(); // Cut off everything after ';' e.g., codecs=opus
 
                 const prompt = `あなたは厳格かつ励まし上手なIT英語発音コーチです。添付の音声は、学習者が以下の目標英文をシャドーイング・発音したものです。
 
