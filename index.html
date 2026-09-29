@@ -76,7 +76,6 @@
             100% { transform: rotate(360deg); }
         }
         
-        /* プレイヤーボタンのローディング状態 */
         .play-spinner { border-top-color: #0f172a; width: 16px; height: 16px; border-width: 2px; }
     </style>
 </head>
@@ -157,7 +156,7 @@
                 </div>
             </div>
 
-            <!-- Fallback Warning (Hidden by default) -->
+            <!-- Fallback Warning -->
             <div id="fallback-warning" class="hidden mb-4 bg-amber-900/40 border border-amber-700/50 p-3 rounded-lg flex items-start gap-2">
                 <i class="fa-solid fa-circle-info text-amber-400 mt-0.5"></i>
                 <p class="text-xs text-amber-200">API未設定のため、内蔵のオフラインフレーズを使用しています。</p>
@@ -187,6 +186,7 @@
                     <button class="speed-btn px-3 py-1 rounded text-xs font-medium text-slate-400 hover:text-white transition-colors" data-speed="1.2">1.2x</button>
                 </div>
             </div>
+            <p class="text-[10px] text-slate-500 mt-3 text-center w-full">※iPhoneの場合、消音モードでも音声が鳴るように調整されています。</p>
         </section>
 
         <!-- 3. Record & Evaluate Area -->
@@ -213,7 +213,6 @@
                 </div>
             </div>
 
-            <!-- Audio element for playing recorded audio -->
             <audio id="recorded-audio" class="hidden"></audio>
 
             <!-- Gemini Evaluation -->
@@ -247,7 +246,6 @@
                     </div>
                 </div>
             </div>
-
         </section>
     </main>
 
@@ -272,9 +270,9 @@
                 <div>
                     <label class="block text-sm font-medium text-slate-300 mb-2">AI Model</label>
                     <select id="model-select" class="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-indigo-500">
-                        <option value="gemini-3.8-flash">gemini-3.8-flash (Default)</option>
-                        <option value="gemini-3.7-flash">gemini-3.7-flash (Backup)</option>
-                        <option value="gemini-3.5-flash">gemini-3.5-flash (Light)</option>
+                        <option value="gemini-3.8-flash">gemini-3.8-flash (Default/高速)</option>
+                        <option value="gemini-3.7-flash">gemini-3.7-flash (Backup/安定)</option>
+                        <option value="gemini-3.5-flash">gemini-3.5-flash (Light/軽量)</option>
                     </select>
                 </div>
                 
@@ -327,7 +325,8 @@
             activeUtterances: []
         };
 
-        // iPhone 消音モード(マナーモード)対策用 無音オーディオハック (極小Base64 WAV)
+        // 🔥 iPhone 消音モード対策 (Silent Audio Hack)
+        // 極小の無音Base64 WAVデータ。ユーザーアクション時にこれを再生することでiOSのオーディオセッションをアクティブにする。
         const silentBase64 = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
         const silentAudio = new Audio(silentBase64);
 
@@ -426,7 +425,7 @@
                 el.apiKeyInput.value = '';
             }
             
-            // Validating saved model against current options (2.5 is removed)
+            // Ensure 2.5 is removed and default to 3.8 if invalid
             const validModels = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.5-flash'];
             if (!validModels.includes(state.model)) {
                 state.model = 'gemini-3.8-flash';
@@ -460,11 +459,11 @@
             }, 3500);
         }
 
-        // Centralized API Caller with Auto-Fallback for 429/503 (High Demand) errors
+        // Centralized API Caller with Auto-Fallback for 429/503 errors (High Demand)
         async function fetchGeminiWithFallback(payload, baseModel) {
             if (!state.apiKey) throw new Error("API Key is required");
             
-            // Build fallback cascade based on selected model
+            // Build fallback cascade
             let modelsToTry = [baseModel];
             if (baseModel === 'gemini-3.8-flash') {
                 modelsToTry = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.5-flash'];
@@ -486,8 +485,8 @@
 
                     // Auto Fallback for overloaded servers
                     if (response.status === 429 || response.status === 503) {
-                        console.warn(`Model ${model} returned ${response.status} (High Demand). Trying next...`);
-                        lastError = new Error(`HTTP Status: ${response.status} (Server busy)`);
+                        console.warn(`Model ${model} returned ${response.status} (High Demand). Trying fallback...`);
+                        lastError = new Error(`HTTP ${response.status} (Server busy)`);
                         continue; 
                     }
 
@@ -496,7 +495,6 @@
                         throw new Error(err.error?.message || `HTTP Status: ${response.status}`);
                     }
 
-                    // Notification if fallback was used
                     if (model !== baseModel) {
                         showToast(`${baseModel}が混雑中のため、${model}で結果を取得しました。`, 'info');
                     }
@@ -504,7 +502,7 @@
                     return await response.json();
 
                 } catch (error) {
-                    console.error(`Gemini API Request Failed for ${model}:`, error);
+                    console.error(`Request Failed for ${model}:`, error);
                     lastError = error;
                 }
             }
@@ -541,10 +539,22 @@
                 });
             });
 
-            el.btnGenerate.addEventListener('click', generatePhrase);
+            // ⚠️ iOS Safari Hack: play() MUST be called directly within a synchronous event listener
+            el.btnGenerate.addEventListener('click', () => {
+                silentAudio.play().catch(e=>console.log('Unlock audio skipped'));
+                generatePhrase();
+            });
 
-            el.btnPlayModel.addEventListener('click', () => handlePlayClick(1));
-            el.btnLoop3x.addEventListener('click', () => handlePlayClick(3));
+            el.btnPlayModel.addEventListener('click', () => {
+                silentAudio.play().catch(e=>console.log('Unlock audio skipped'));
+                handlePlayClick(1);
+            });
+            
+            el.btnLoop3x.addEventListener('click', () => {
+                silentAudio.play().catch(e=>console.log('Unlock audio skipped'));
+                handlePlayClick(3);
+            });
+            
             el.btnStopModel.addEventListener('click', stopAudioPlayback);
             
             el.speedBtns.forEach(btn => {
@@ -561,7 +571,12 @@
 
             el.btnRecord.addEventListener('click', toggleRecording);
             el.btnPlayMine.addEventListener('click', playRecordedAudio);
-            el.btnCompare.addEventListener('click', compareAudio);
+            
+            el.btnCompare.addEventListener('click', () => {
+                silentAudio.play().catch(e=>console.log('Unlock audio skipped'));
+                compareAudio();
+            });
+            
             el.btnEvaluate.addEventListener('click', evaluateAudio);
         }
 
@@ -590,9 +605,6 @@
         }
 
         async function generatePhrase() {
-            // Audio unlock hack for iOS Safari
-            silentAudio.play().catch(()=>{});
-            
             if (!state.apiKey) {
                 const randomPhrase = fallbackPhrases[Math.floor(Math.random() * fallbackPhrases.length)];
                 state.currentPhrase = randomPhrase;
@@ -611,7 +623,8 @@
 
             setLoadingState(el.btnGenerate, true, 'Generating...');
 
-            // TTS(Audio) is intentionally completely removed here to ensure instant generation and avoid 429 High Demand limits.
+            // Security Review: thinkingConfig is removed to prevent 400 Bad Request errors.
+            // Output is strictly text JSON to keep API payload ultra-lightweight.
             const prompt = `あなたはITエンジニア向けの英語コーチです。トピック「${topic}」に関連する、実務や海外出張で実際に使われる自然な英会話フレーズを1〜2文で生成してください。ネイティブが発音する際に「リエゾン（音の連結）」や「リダクション（音の脱落）」が発生しやすい、実践的な表現を含めること。
 以下のJSONスキーマに従って厳密にJSONのみを出力してください。
 {
@@ -630,7 +643,6 @@
                 generationConfig: {
                     responseMimeType: "application/json",
                     temperature: 0.7
-                    // thinkingConfig omitted as per previous security review for safety
                 }
             };
 
@@ -687,38 +699,29 @@
                 return;
             }
             
-            // 🔥 The iOS Safari Hack: Play a silent audio immediately on user interaction
-            // This forces Safari to switch the audio session to "media" mode, 
-            // bypassing the hardware silent switch for upcoming SpeechSynthesis sounds.
-            silentAudio.play().catch(e => console.log('Silent audio unlock skipped/failed'));
-
             state.targetLoopCount = loops;
             state.currentLoopIndex = 0;
             state.isPlayingModel = true;
             togglePlaybackUI(true);
 
-            // Execute the synthesized speech loop
+            // Using await-based sequential speech synthesis queue to avoid Safari timer GC issues
             await startSpeechSynthesisLoop();
         }
 
         async function startSpeechSynthesisLoop() {
-             // iOS Safari GC Issue Mitigation Strategy via Promises & sequential queue
-             // We avoid using "await sleep()" as iOS Safari suspends timer-based audio triggers.
             for (let i = 0; i < state.targetLoopCount; i++) {
                 if (!state.isPlayingModel) break;
                 
-                // Actual Phrase
+                // Actual speaking
                 await speakSynthesis(state.currentPhrase.english, state.playbackSpeed);
                 
-                // Pause (Dummy Phrase) instead of Timeout to keep audio session alive and not break iOS rules
+                // Pause (Dummy Phrase instead of timeout to avoid sleep dropping audio on iOS)
                 if (i < state.targetLoopCount - 1 && state.isPlayingModel) {
                     await speakSynthesis("...", 0.5); 
                 }
             }
             
-            if (state.isPlayingModel) {
-                stopAudioPlayback();
-            }
+            if (state.isPlayingModel) stopAudioPlayback();
         }
 
         function speakSynthesis(text, rate) {
@@ -730,7 +733,7 @@
                 
                 const utterance = new SpeechSynthesisUtterance(text);
                 
-                // GC Protection (Keep reference in state array)
+                // GC Protection (Store reference to prevent Chrome/Safari garbage collection midway)
                 if (!state.activeUtterances) state.activeUtterances = [];
                 state.activeUtterances.push(utterance);
                 if (state.activeUtterances.length > 10) state.activeUtterances.shift();
@@ -745,7 +748,7 @@
                 if (usVoice) utterance.voice = usVoice;
 
                 utterance.onend = () => resolve();
-                utterance.onerror = () => resolve(); // fail silently on error and continue
+                utterance.onerror = () => resolve(); // continue even if error
                 
                 window.speechSynthesis.speak(utterance);
             });
@@ -808,7 +811,7 @@
                     el.btnCompare.disabled = false;
                     el.btnEvaluate.disabled = false;
                     
-                    stream.getTracks().forEach(track => track.stop()); // Free mic stream memory
+                    stream.getTracks().forEach(track => track.stop()); // Free microphone
                 };
 
                 state.mediaRecorder.start();
@@ -852,11 +855,8 @@
 
         async function compareAudio() {
             if (!state.recordedBlob) return;
-            
-            // Audio unlock hack just in case
-            silentAudio.play().catch(()=>{});
 
-            // 1. Play the synthesized model target
+            // 1. Play target synthesis
             state.targetLoopCount = 1;
             state.currentLoopIndex = 0;
             state.isPlayingModel = true;
@@ -865,7 +865,7 @@
             await speakSynthesis(state.currentPhrase.english, state.playbackSpeed);
             stopAudioPlayback();
             
-            // 2. Short natural delay, then play recorded user audio
+            // 2. Play recording after a natural brief pause
             setTimeout(() => {
                 playRecordedAudio();
             }, 800);
@@ -883,7 +883,7 @@
             el.evalResultCard.classList.add('hidden');
 
             try {
-                // 1. Convert Blob to Base64
+                // Convert Blob to Base64
                 const base64Data = await new Promise((resolve, reject) => {
                     const reader = new FileReader();
                     reader.onloadend = () => resolve(reader.result);
@@ -892,9 +892,9 @@
                 });
                 const base64Clean = base64Data.split(',')[1];
                 
-                // Security Review Implemented: MIME type normalization to prevent format errors
+                // ⚠️ Security/Bug Fix: Strip codec info from MIME type to avoid Gemini API formatting errors
                 let rawMime = state.recordedBlob.type || state.audioMimeType || 'audio/webm';
-                const mime = rawMime.split(';')[0].trim(); // Cut off everything after ';' e.g., codecs=opus
+                const mime = rawMime.split(';')[0].trim();
 
                 const prompt = `あなたは厳格かつ励まし上手なIT英語発音コーチです。添付の音声は、学習者が以下の目標英文をシャドーイング・発音したものです。
 
@@ -926,7 +926,7 @@
                     ],
                     generationConfig: {
                         responseMimeType: "application/json",
-                        temperature: 0.2 // Lower temp for consistency
+                        temperature: 0.2
                     }
                 };
 
